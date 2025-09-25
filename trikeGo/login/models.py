@@ -3,7 +3,7 @@ from django.db import models
 
 # Create your models here.
 class User(models.Model):
-    user_type = (('C', 'Customer'), ('S', 'Staff'))
+    user_type = (('M', 'Mobile'), ('A', 'Admin'), ('D', 'Driver'))
     username = models.CharField(max_length=15, null=False, primary_key=True)
     password = models.CharField(max_length=10, null=False)
     email = models.EmailField(max_length=25, null=False)
@@ -13,7 +13,15 @@ class User(models.Model):
     trikego_user = models.CharField(max_length=1, choices=user_type)
 
 
-class Staff(User):
+class Admin(User):
     position = models.CharField(max_length=100)
     date_hired = models.DateField()
     years_of_service = models.IntegerField()
+
+
+class Driver(User):
+    license_number = models.CharField(max_length=20)
+    license_expiry = models.DateField()
+    date_hired = models.DateField()
+    years_of_service = models.IntegerField()
+    is_available = models.BooleanField(default=True)
