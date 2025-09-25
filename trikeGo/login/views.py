@@ -4,6 +4,13 @@ from .forms import CustomerForm
 from .models import User
 
 # Create your views here.
+class IndexView(View):
+    template_name = 'template/landingPage.html'
+
+    def get(self, request):
+        return render(request, self.template_name)
+    
+
 class Login(View):
     template_name = 'templates/login.html'
 
@@ -28,13 +35,3 @@ class Login(View):
             errorMessage = uname + ' does not exists.'
 
         return render(request, self.template_name, {'error': errorMessage})
-
-
-class LoggedIn(View):
-    template_name = 'templates/landingPage.html'
-
-    def get(self, request):
-        if (request.session.get('username')):
-            return render(request, self.template_name)
-        else:
-            return redirect('user:login')
