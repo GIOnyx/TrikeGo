@@ -1,27 +1,30 @@
 :root{
   --container-width: 1100px;
-  --accent: #00a8ff;
+  --accent: #18c26e;
+  --accent-600: #11a85d;
   --muted: rgba(255,255,255,0.85);
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial}
 .container{max-width:var(--container-width);margin:0 auto;padding:0 20px}
-.site-header{position:fixed;left:0;right:0;top:0;z-index:40;background:transparent;padding:18px 0}
+.site-header{position:fixed;left:0;right:0;top:0;z-index:40;background:rgba(10,16,32,0.75);backdrop-filter:saturate(140%) blur(6px);padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.08)}
 .header-inner{display:flex;align-items:center;justify-content:space-between}
-.brand{font-weight:700;color:#fff;font-size:20px}
-.nav a{color:rgba(255,255,255,0.9);margin-left:18px;text-decoration:none}
-.btn{display:inline-block;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#fff}
+.brand{font-weight:800;color:#e6eefc;font-size:22px}
+.nav a{color:rgba(230,238,252,0.92);margin-left:24px;text-decoration:none}
+.btn{display:inline-block;padding:10px 16px;border-radius:999px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#fff}
 .btn.small{padding:6px 10px}
-.btn.primary{background:var(--accent);border-color:transparent;color:#06263b}
+.btn.primary{background:linear-gradient(180deg, var(--accent), var(--accent-600));border-color:transparent;color:#06263b}
 .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.18)}
+.btn.provider{border-color:#2b3a66;background:rgba(12,18,38,0.6)}
 
 .hero{min-height:92vh;display:flex;align-items:center;position:relative;background: url('../images/bg.jpg') center/cover no-repeat fixed}
 .hero-overlay{position:absolute;inset:0;background:linear-gradient(180deg, rgba(4,6,8,0.45) 0%, rgba(4,6,8,0.6) 100%);}
 .hero-inner{position:relative;z-index:10;display:flex;gap:40px;align-items:center;padding:120px 20px}
-.hero-left{flex:1;color:var(--muted);max-width:640px}
-.hero-left h1{font-size:44px;color:#fff;margin:0 0 12px}
-.lead{color:rgba(255,255,255,0.9);font-size:18px;margin:0 0 18px}
-.features{display:flex;gap:12px;padding:0;margin:0;list-style:none;color:rgba(255,255,255,0.85)}python manage.py runserver
+.hero-left{flex:1;color:var(--muted);max-width:820px}
+.hero-left h1{font-size:64px;line-height:1.02;letter-spacing:-0.02em;color:#fff;margin:0 0 16px}
+.hero-left h1 span{opacity:.95}
+.lead{color:rgba(255,255,255,0.92);font-size:22px;line-height:1.6;max-width:700px;margin:0}
+.features{display:flex;gap:12px;padding:0;margin:0;list-style:none;color:rgba(255,255,255,0.85)}
 
 .hero-card{width:360px;background:rgba(255,255,255,0.98);border-radius:14px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,0.25)}
 .ride-form .form-row{display:flex;flex-direction:column;margin-bottom:12px}
@@ -32,8 +35,28 @@ html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, 'Seg
 
 .section{padding:60px 20px;background:#fff;color:#0f172a}
 
+/* Modal login */
+.modal{position:fixed;inset:0;display:none;z-index:1000}
+.modal:target{display:block}
+.modal-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.6);z-index:0}
+.modal-card{position:relative;z-index:1;max-width:520px;margin:12vh auto;background:#0e1a36;color:#e6eefc;border-radius:22px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 20px 60px rgba(0,0,0,0.45);padding:28px 28px 22px}
+.modal-card h2{margin:0 0 6px;font-size:32px}
+.modal-card .sub{margin:0 0 18px;color:#a8b5d6}
+.provider-row{display:flex;gap:14px;margin-bottom:16px}
+.divider{position:relative;text-align:center;color:#8ea0c8;font-size:13px;margin:12px 0 16px}
+.divider span{background:#0e1a36;padding:0 10px}
+.divider:before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(255,255,255,0.12)}
+.modal-card form{display:flex;flex-direction:column;gap:12px}
+.modal-card input{padding:12px 14px;border-radius:10px;border:1px solid #2b3a66;background:#0a1530;color:#e6eefc}
+.remember{display:flex;justify-content:space-between;align-items:center;color:#a8b5d6;font-size:14px}
+.remember input{margin-right:8px}
+.forgot{color:#71a6ff;text-decoration:none}
+.btn.wide{width:100%}
+.foot{margin-top:8px;color:#a8b5d6;font-size:14px}
+.foot a{color:#e6eefc}
+
 @media (max-width:900px){
   .hero-inner{flex-direction:column;align-items:stretch;padding:100px 20px}
   .hero-card{width:100%}
-  .hero-left h1{font-size:32px}
+  .hero-left h1{font-size:40px}
 }
