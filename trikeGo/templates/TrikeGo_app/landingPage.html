@@ -13,6 +13,11 @@
     <div class="container header-inner">
       <div class="brand">TrikeGo</div>
       <nav class="nav">
+        <a href="{% url 'register' %}">Ride</a>
+        <a href="{% url 'register' %}">Drive</a>
+        <a href="#about">About</a>
+        <a class="btn small login-link" href="#login">Login</a>
+
         <a href="#features">Features</a>
         <a href="#how">How it works</a>
         <a class="btn small" href="{% url 'login' %}">Sign in</a>
@@ -25,44 +30,43 @@
       <div class="hero-overlay"></div>
       <div class="container hero-inner">
         <div class="hero-left">
-          <h1>Fast, friendly rides in minutes</h1>
-          <p class="lead">Book a trike nearby — safe, reliable, and affordable.</p>
-          <ul class="features">
-            <li>Live tracking</li>
-            <li>Affordable fares</li>
-            <li>Local drivers</li>
-          </ul>
-        </div>
-
-        <div class="hero-card" id="book">
-          <form method="POST" class="ride-form" autocomplete="off">
-            {% csrf_token %}
-            <div class="form-row">
-              {{ form.pickup.label_tag }}
-              {{ form.pickup }}
-            </div>
-            <div class="form-row">
-              {{ form.destination.label_tag }}
-              {{ form.destination }}
-            </div>
-            <div class="form-row controls">
-              <button class="btn primary" type="submit">Request Ride</button>
-            </div>
-          </form>
-
-          {% if msg %}
-            <div class="eta">{{ msg }}</div>
-          {% endif %}
+          <h1><span>TrikeGo:</span> Affordable, Eco-Friendly<br/>Tricycle Rides</h1>
+          <p class="lead"><strong>Ditch traffic and high fares</strong> — hassle-free urban travel awaits. Locate a nearby tricycle in our app, unlock it instantly, and ride at your <em>own pace</em>.</p>
         </div>
       </div>
     </section>
 
-    <section id="features" class="section">
+    <section id="about" class="section">
       <div class="container">
         <h2>Why choose TrikeGo?</h2>
         <p>Fast pickups, clear fares, and friendly drivers — built for local travel.</p>
       </div>
     </section>
   </main>
+
+  <!-- CSS-only modal login using :target -->
+  <div id="login" class="modal">
+    <a href="#" class="modal-overlay" aria-label="Close"></a>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <h2 id="login-title">Log in to your Account</h2>
+      <p class="sub">Welcome back! Select method to sign in:</p>
+      <div class="provider-row">
+        <a class="btn provider">Google</a>
+        <a class="btn provider">Facebook</a>
+      </div>
+      <div class="divider"><span>or continue with email</span></div>
+      <form method="POST" action="{% url 'login' %}">
+        {% csrf_token %}
+        <input type="text" name="username" placeholder="Email" required />
+        <input type="password" name="password" placeholder="Password" required />
+        <label class="remember">
+          <input type="checkbox" name="remember" /> Remember Me
+          <a href="#" class="forgot">Forgot Password?</a>
+        </label>
+        <button type="submit" class="btn primary wide">Log In</button>
+      </form>
+      <p class="foot">Don't have an account? <a href="{% url 'register' %}">Create an account</a></p>
+    </div>
+  </div>
 </body>
 </html>
