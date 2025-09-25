@@ -1,5 +1,68 @@
 {% load static %}
 
-<link rel="stylesheet" href="{% static 'TrikeGo_app/css/style.css' %}">
-<script src="{% static 'TrikeGo_app/js/script.js' %}"></script>
-<img src="{% static 'TrikeGo_app/images/bg.jpg' %}" alt="Background">
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TrikeGo — Get a Ride</title>
+  <link rel="stylesheet" href="{% static 'TrikeGo_app/css/landingPageStyle.css' %}" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand">TrikeGo</div>
+      <nav class="nav">
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a class="btn small" href="#book">Sign in</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-overlay"></div>
+      <div class="container hero-inner">
+        <div class="hero-left">
+          <h1>Fast, friendly rides in minutes</h1>
+          <p class="lead">Book a trike nearby — safe, reliable, and affordable.</p>
+          <ul class="features">
+            <li>Live tracking</li>
+            <li>Affordable fares</li>
+            <li>Local drivers</li>
+          </ul>
+        </div>
+
+        <div class="hero-card" id="book">
+          <form method="POST" class="ride-form" autocomplete="off">
+            {% csrf_token %}
+            <div class="form-row">
+              {{ form.pickup.label_tag }}
+              {{ form.pickup }}
+            </div>
+            <div class="form-row">
+              {{ form.destination.label_tag }}
+              {{ form.destination }}
+            </div>
+            <div class="form-row controls">
+              <button class="btn primary" type="submit">Request Ride</button>
+            </div>
+          </form>
+
+          {% if msg %}
+            <div class="eta">{{ msg }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="section">
+      <div class="container">
+        <h2>Why choose TrikeGo?</h2>
+        <p>Fast pickups, clear fares, and friendly drivers — built for local travel.</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
