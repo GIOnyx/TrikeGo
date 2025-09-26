@@ -15,7 +15,9 @@ html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, 'Seg
 .btn.small{padding:6px 10px}
 .btn.primary{background:linear-gradient(180deg, var(--accent), var(--accent-600));border-color:transparent;color:#06263b}
 .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.18)}
-.btn.provider{border-color:#2b3a66;background:rgba(12,18,38,0.6)}
+.btn.provider {border-color: #2b3a66;background: rgba(12, 18, 38, 0.6);display: flex;align-items: center;justify-content: center;flex: 1;}
+.btn.provider > button {flex: 0 0 50%;max-width: 50%;box-sizing: border-box;}
+
 
 .login-link{background:linear-gradient(180deg, var(--accent), var(--accent-600));border-color:transparent;color:#fff;font-weight:700}
 .hero{min-height:92vh;display:flex;align-items:center;position:relative;background: url('../images/bg.jpg') center/cover no-repeat fixed}
