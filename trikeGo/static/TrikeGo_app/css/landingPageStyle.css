@@ -20,7 +20,7 @@ html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, 'Seg
 
 
 .login-link{background:linear-gradient(180deg, var(--accent), var(--accent-600));border-color:transparent;color:#fff;font-weight:700}
-.hero{min-height:92vh;display:flex;align-items:center;position:relative;background: url('../images/bg.jpg') center/cover no-repeat fixed}
+.hero{min-height:100vh;display:flex;align-items:center;position:relative;background: url('../images/bg.jpg') center/cover no-repeat fixed}
 .hero-overlay{position:absolute;inset:0;background:linear-gradient(180deg, rgba(4,6,8,0.45) 0%, rgba(4,6,8,0.6) 100%);}
 .hero-inner{position:relative;z-index:10;display:flex;gap:40px;align-items:center;padding:120px 20px}
 .hero-left{flex:1;color:var(--muted);max-width:820px}
