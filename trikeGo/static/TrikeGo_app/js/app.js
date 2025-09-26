@@ -1,3 +1,4 @@
+
 (function(){
   function openModal() {
     var modal = document.getElementById('login');
