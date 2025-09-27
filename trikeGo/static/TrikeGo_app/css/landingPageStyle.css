@@ -24,7 +24,7 @@ html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, 'Seg
 .hero-overlay{position:absolute;inset:0;background:linear-gradient(180deg, rgba(4,6,8,0.45) 0%, rgba(4,6,8,0.6) 100%);}
 .hero-inner{position:relative;z-index:10;display:flex;gap:40px;align-items:center;padding:120px 20px}
 .hero-left{flex:1;color:var(--muted);max-width:820px}
-.hero-left h1{font-size:64px;line-height:1.02;letter-spacing:-0.02em;color:#fff;margin:0 0 16px}
+.hero-left h1{font-size:64px;line-height:1.02;letter-spacing:-0.02em;color:#fff;margin:0 0 16px }
 .hero-left h1 span{opacity:.95}
 .lead{color:rgba(255, 255, 255, 0.92);font-size:22px;line-height:1.6;max-width:700px;margin:0}
 .features{display:flex;gap:12px;padding:0;margin:0;list-style:none;color:rgba(255,255,255,0.85)}
@@ -54,9 +54,13 @@ html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, 'Seg
 .remember{display:flex;justify-content:space-between;align-items:center;color:#a8b5d6;font-size:14px}
 .remember input{margin-right:8px}
 .forgot{color:#71a6ff;text-decoration:none}
-.btn.wide{width:100%}
-.foot{margin-top:8px;color:#a8b5d6;font-size:14px}
-.foot a{color:#e6eefc}
+.btn.wide{font-weight: bold;width:100%}
+
+/* Role-specific modal styles */ 
+.modal-card.driver h2 { color: #18c26e; /* green for drivers */ } 
+.modal-card.passenger h2 { color: #18c26e; /* blue for passengers */ } 
+.modal-card.driver button { font-weight: bold;background: linear-gradient(180deg, #18c26e, #11a85d); color: #06263b; } 
+.modal-card.passenger button { font-weight: bold; background: linear-gradient(180deg, #18c26e, #11a85d); color: #06263b; }
 
 @media (max-width:900px){
   .hero-inner{flex-direction:column;align-items:stretch;padding:100px 20px}

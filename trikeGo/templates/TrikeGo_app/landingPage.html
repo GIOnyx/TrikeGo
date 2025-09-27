@@ -1,5 +1,5 @@
+```html
 {% load static %}
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -14,8 +14,8 @@
     <div class="container header-inner">
       <div class="brand">TrikeGo</div>
       <nav class="nav">
-        <a href="{% url 'register' %}">Ride</a>
-        <a href="{% url 'register' %}">Drive</a>
+        <a href="#register-passenger">Ride</a>
+        <a href="#register-driver">Drive</a>
         <a href="#about">About</a>
         <a class="btn small login-link" href="#login">Login</a>
       </nav>
@@ -33,29 +33,86 @@
       </div>
     </section>
 
-  <!-- CSS-only modal login using :target -->
-  <div id="login" class="modal">
-    <a href="#" class="modal-overlay" aria-label="Close"></a>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
-      <h2 id="login-title">Log in to your Account</h2>
-      <p class="sub">Welcome back! Select method to sign in:</p>
-      <div class="provider-row">
-        <a class="btn provider">Google</a>
-        <a class="btn provider">Facebook</a>
+    <!-- Login Modal -->
+    <div id="login" class="modal">
+      <a href="#" class="modal-overlay" aria-label="Close"></a>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
+        <h2 id="login-title">Log in to your Account</h2>
+        <p class="sub">Welcome back! Select method to sign in:</p>
+        <div class="provider-row">
+          <a class="btn provider">Google</a>
+          <a class="btn provider">Facebook</a>
+        </div>
+        <div class="divider"><span>or continue with email</span></div>
+        <form method="POST" action="{% url 'login' %}">
+          {% csrf_token %}
+          <input type="text" name="username" placeholder="Email" required />
+          <input type="password" name="password" placeholder="Password" required />
+          <label class="remember">
+            <input type="checkbox" name="remember" /> Remember Me
+            <a href="#" class="forgot">Forgot Password?</a>
+          </label>
+          <button type="submit" class="btn primary wide">Log In</button>
+        </form>
+        <p class="foot">Don't have an account? <a href="#register-passenger">Register</a></p>
       </div>
-      <div class="divider"><span>or continue with email</span></div>
-      <form method="POST" action="{% url 'login' %}">
-        {% csrf_token %}
-        <input type="text" name="username" placeholder="Email" required />
-        <input type="password" name="password" placeholder="Password" required />
-        <label class="remember">
-          <input type="checkbox" name="remember" /> Remember Me
-          <a href="#" class="forgot">Forgot Password?</a>
-        </label>
-        <button type="submit" class="btn primary wide">Log In</button>
-      </form>
-      <p class="foot">Don't have an account? <a href="{% url 'register' %}">Create an account</a></p>
     </div>
-  </div>
+
+    <!-- Passenger Register Modal -->
+    <div id="register-passenger" class="modal">
+      <a href="#" class="modal-overlay" aria-label="Close"></a>
+      <div class="modal-card passenger" role="dialog" aria-modal="true" aria-labelledby="register-passenger-title">
+        <h2 id="register-passenger-title">Join as a Passenger</h2>
+        <p class="sub">Book rides quickly with TrikeGo.</p>
+
+        <div class="provider-row">
+          <a class="btn provider">Google</a>
+          <a class="btn provider">Facebook</a>
+        </div>
+
+        <div class="divider"><span>or continue with email</span></div>
+        <form method="POST" action="{% url 'passenger_register' %}">
+          {% csrf_token %}
+          <input type="text" name="full_name" placeholder="Full Name" required />
+          <input type="email" name="email" placeholder="Email" required />
+          <input type="text" name="phone_number" placeholder="Phone Number" required />
+          <input type="password" name="password1" placeholder="Password" required />
+          <input type="password" name="password2" placeholder="Confirm Password" required />
+          <button type="submit" class="btn wide">Create Passenger Account</button>
+        </form>
+
+        <p class="foot">Already have an account? <a href="#login">Log in</a></p>
+      </div>
+    </div>
+
+    <!-- Driver Register Modal -->
+    <div id="register-driver" class="modal">
+      <a href="#" class="modal-overlay" aria-label="Close"></a>
+      <div class="modal-card driver" role="dialog" aria-modal="true" aria-labelledby="register-driver-title">
+        <h2 id="register-driver-title">Join as a Driver</h2>
+        <p class="sub">Drive and earn with TrikeGo.</p>
+
+        <div class="provider-row">
+          <a class="btn provider">Google</a>
+          <a class="btn provider">Facebook</a>
+        </div>
+
+        <div class="divider"><span>or continue with email</span></div>
+        <form method="POST" action="{% url 'driver_register' %}">
+          {% csrf_token %}
+          <input type="text" name="full_name" placeholder="Full Name" required />
+          <input type="email" name="email" placeholder="Email" required />
+          <input type="text" name="phone_number" placeholder="Phone Number" required />
+          <input type="text" name="license_number" placeholder="Driver’s License Number" required />
+          <input type="password" name="password1" placeholder="Password" required />
+          <input type="password" name="password2" placeholder="Confirm Password" required />
+          <button type="submit" class="btn wide">Create Driver Account</button>
+        </form>
+
+        <p class="foot">Already have a driver account? <a href="#login">Log in</a></p>
+      </div>
+    </div>
+  </main>
 </body>
 </html>
+```
