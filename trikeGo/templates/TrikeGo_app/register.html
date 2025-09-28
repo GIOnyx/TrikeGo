@@ -23,6 +23,8 @@
         <form method="POST" action="{% url 'register' %}">
           {% csrf_token %}
           <input type="text" name="username" placeholder="Email" required />
+          <input type="text" name="username" placeholder="First Name" required />
+          <input type="text" name="username" placeholder="Last Name" required />
           <input type="password" name="password1" placeholder="Password" required />
           <input type="password" name="password2" placeholder="Confirm Password" required />
           <button type="submit" class="btn primary wide">Create account</button>

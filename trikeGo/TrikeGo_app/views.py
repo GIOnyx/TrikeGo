@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect
 from django.views import View
 from django.contrib.auth import authenticate, login
 from django.contrib import messages
-from .forms import CustomerForm
+from .forms import UserForm
 from .forms import RideForm 
 
 def landing_page(request):
@@ -47,12 +47,14 @@ def register_page(request):
     template_name = 'TrikeGo_app/register.html'
 
     def get(self, request):
-        form = CustomerForm()
+        form = UserForm()
         return render(request, self.template_name,{'form': form})
 
     def post(self, request):
-        customer = CustomerForm(request.POST)
+        customer = UserForm(request.POST)
         if customer.is_valid():
             customer.save()
             return redirect('user:login')
     return render(request, "TrikeGo_app/register.html")
+
+

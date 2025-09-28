@@ -23,10 +23,13 @@ class RideForm(forms.Form):
 
 class UserForm(ModelForm):
     username = forms.CharField(widget=forms.TextInput(attrs={'placeholder': 'Username'}))
+    first_name = forms.CharField(widget=forms.TextInput(attrs={'placeholder': 'First Name'}))
+    last_name = forms.CharField(widget=forms.TextInput(attrs={'placeholder': 'Last Name'}))
+    loyalty_points = forms.IntegerField(initial=0, widget=forms.HiddenInput(), required=False)
     password = forms.CharField(widget=forms.PasswordInput(attrs={'placeholder': 'Password'}))
     email = forms.EmailField(widget=forms.EmailInput(attrs={'placeholder': 'Email'}))
     trikeGo_user = forms.CharField(initial='C', widget=forms.HiddenInput())
 
     class Meta:
         model = User
-        fields = ['username', 'password', 'email', 'trikeGo_user']
+        fields = ['username', 'first_name', 'last_name', 'password', 'email', 'loyalty_points', 'trikeGo_user']
