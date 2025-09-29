@@ -1,0 +1,61 @@
+{% load static %}
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TrikeGo — Get a Ride</title>
+  <link rel="stylesheet" href="{% static 'TrikeGo_app/css/landingPageStyle.css' %}?v=2" />
+  <script defer src="{% static 'TrikeGo_app/js/app.js' %}"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand">TrikeGo</div>
+      <nav class="nav">
+        <a href="{% url 'register' %}">Ride</a>
+        <a href="{% url 'register' %}">Drive</a>
+        <a href="#about">About</a>
+        <a class="btn small login-link" href="#login">Login</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-overlay"></div>
+      <div class="container hero-inner">
+        <div class="hero-left">
+          <h1><span>TrikeGo:</span> Affordable, Eco-Friendly<br/>Tricycle Rides</h1>
+          <p class="lead"><strong>Ditch traffic and high fares</strong> — hassle-free urban travel awaits. Locate a nearby tricycle in our app, unlock it instantly, and ride at your <em>own pace</em>.</p>
+        </div>
+      </div>
+    </section>
+
+  <!-- CSS-only modal login using :target -->
+  <div id="login" class="modal">
+    <a href="#" class="modal-overlay" aria-label="Close"></a>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <h2 id="login-title">Log in to your Account</h2>
+      <p class="sub">Welcome back! Select method to sign in:</p>
+      <div class="provider-row">
+        <a class="btn provider">Google</a>
+        <a class="btn provider">Facebook</a>
+      </div>
+      <div class="divider"><span>or continue with email</span></div>
+      <form method="POST" action="{% url 'login' %}">
+        {% csrf_token %}
+        <input type="text" name="username" placeholder="Email" required />
+        <input type="password" name="password" placeholder="Password" required />
+        <label class="remember">
+          <input type="checkbox" name="remember" /> Remember Me
+          <a href="#" class="forgot">Forgot Password?</a>
+        </label>
+        <button type="submit" class="btn primary wide">Log In</button>
+      </form>
+      <p class="foot">Don't have an account? <a href="{% url 'register' %}">Create an account</a></p>
+    </div>
+  </div>
+</body>
+</html>
