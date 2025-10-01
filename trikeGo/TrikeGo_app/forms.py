@@ -1,8 +1,6 @@
 from django.forms import ModelForm
 from django import forms
-from django.contrib.auth.forms import AuthenticationForm
 import random
-from .models import User
 
 class RideForm(forms.Form):
     pickup = forms.CharField(
@@ -19,17 +17,3 @@ class RideForm(forms.Form):
     def get_eta(self):
         """Return a random ETA in minutes."""
         return random.randint(2, 7)
-
-
-class UserForm(ModelForm):
-    username = forms.CharField(widget=forms.TextInput(attrs={'placeholder': 'Username'}))
-    first_name = forms.CharField(widget=forms.TextInput(attrs={'placeholder': 'First Name'}))
-    last_name = forms.CharField(widget=forms.TextInput(attrs={'placeholder': 'Last Name'}))
-    loyalty_points = forms.IntegerField(initial=0, widget=forms.HiddenInput(), required=False)
-    password = forms.CharField(widget=forms.PasswordInput(attrs={'placeholder': 'Password'}))
-    email = forms.EmailField(widget=forms.EmailInput(attrs={'placeholder': 'Email'}))
-    trikeGo_user = forms.CharField(initial='C', widget=forms.HiddenInput())
-
-    class Meta:
-        model = User
-        fields = ['username', 'first_name', 'last_name', 'password', 'email', 'loyalty_points', 'trikeGo_user']

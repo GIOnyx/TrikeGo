@@ -19,5 +19,7 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('TrikeGo_app.urls')),  # send root URL to your app
+    #path('', include('TrikeGo_app.urls')),  send root URL to your app
+    path('', include('user.urls')),  # send 'user/' URLs to user app
+    path('', include('booking.urls')),  # send 'booking/' URLs to booking app
 ]

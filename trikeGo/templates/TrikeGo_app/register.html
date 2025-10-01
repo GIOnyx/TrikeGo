@@ -20,16 +20,32 @@
           <a class="btn provider">Facebook</a>
         </div>
         <div class="divider"><span>or continue with email</span></div>
-        <form method="POST" action="{% url 'register' %}">
+        <form method="POST" action="{% url 'user:register' %}">
           {% csrf_token %}
-          <input type="text" name="username" placeholder="Email" required />
-          <input type="text" name="username" placeholder="First Name" required />
-          <input type="text" name="username" placeholder="Last Name" required />
-          <input type="password" name="password1" placeholder="Password" required />
-          <input type="password" name="password2" placeholder="Confirm Password" required />
+          <!--<input type="text" name="username" placeholder="Username" required />-->
+          {{ form.username }}
+          <!--<input type="text" name="username" placeholder="Email" required />-->
+          {{ form.email }}
+          <!--<input type="text" name="username" placeholder="First Name" required />-->
+          {{ form.first_name }}
+          <!--<input type="text" name="username" placeholder="Last Name" required />-->
+          {{ form.last_name }}
+          <!--<input type="password" name="password" placeholder="Password" required />-->
+          {{ form.password1 }}
+          <!--<input type="password" name="password" placeholder="Confirm Password" required />-->
+          {{ form.password2 }}
+
+
+          {% if form.errors %}
+          <div class="error-message">
+            {{ form.errors }}
+          </div>
+        {% endif %}
+
+        
           <button type="submit" class="btn primary wide">Create account</button>
         </form>
-        <p class="foot">Already have an account? <a href="{% url 'login' %}">Log in</a></p>
+        <p class="foot">Already have an account? <a href="{% url 'user:landing' %}">Log in</a></p>
       </div>
     </div>
   </section>
