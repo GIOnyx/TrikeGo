@@ -10,6 +10,10 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+import os
+from supabase import create_client
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -38,6 +42,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'TrikeGo_app',
+    'user',
+    'booking',
 ]
 
 MIDDLEWARE = [
@@ -73,27 +79,27 @@ WSGI_APPLICATION = 'trikeGo.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-import os
 os.environ["PGOPTIONS"] = "-c inet_family=inet"
 
 
-import dj_database_url
+# import dj_database_url
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'postgres',
         'USER': 'postgres.fyfehaxsgpjeneljrmnd',
         'PASSWORD': 'TrikeGo-databasePassword',  # replace with your real DB password
         'HOST': 'aws-1-ap-southeast-1.pooler.supabase.com',
-        'PORT': '6543',
-        'OPTIONS': {
-            'sslmode': 'require',
-        },
+        'PORT': '5432',
+        #'OPTIONS': {
+        #    'sslmode': 'require',
+        #    'target_session_attrs': 'read-write',
+        #},
     }
 }
 
-
+AUTH_USER_MODEL = "user.CustomUser"
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

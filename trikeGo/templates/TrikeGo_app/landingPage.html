@@ -14,8 +14,8 @@
     <div class="container header-inner">
       <div class="brand">TrikeGo</div>
       <nav class="nav">
-        <a href="{% url 'register' %}">Ride</a>
-        <a href="{% url 'register' %}">Drive</a>
+        <a href="{% url 'user:register' %}">Ride</a>
+        <a href="{% url 'user:register' %}">Drive</a>
         <a href="#about">About</a>
         <a class="btn small login-link" href="#login">Login</a>
       </nav>
@@ -44,17 +44,26 @@
         <a class="btn provider">Facebook</a>
       </div>
       <div class="divider"><span>or continue with email</span></div>
-      <form method="POST" action="{% url 'login' %}">
+      <form method="POST" action="{% url 'user:login' %}">
         {% csrf_token %}
-        <input type="text" name="username" placeholder="Email" required />
+        <input type="text" name="username" placeholder="Username" required />
         <input type="password" name="password" placeholder="Password" required />
         <label class="remember">
           <input type="checkbox" name="remember" /> Remember Me
           <a href="#" class="forgot">Forgot Password?</a>
         </label>
         <button type="submit" class="btn primary wide">Log In</button>
+
+         {% if messages %}
+        <ul>
+            {% for message in messages %}
+                <li>{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+    
       </form>
-      <p class="foot">Don't have an account? <a href="{% url 'register' %}">Create an account</a></p>
+      <p class="foot">Don't have an account? <a href="{% url 'user:register' %}">Create an account</a></p>
     </div>
   </div>
 </body>

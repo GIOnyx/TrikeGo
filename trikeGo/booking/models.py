@@ -1,6 +1,6 @@
 from django.db import models
 
-from TrikeGo_app.models import Rider, Driver
+from user.models import Rider, Driver
 
 # Create your models here.
 class Booking(models.Model):

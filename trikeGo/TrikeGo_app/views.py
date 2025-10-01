@@ -2,7 +2,6 @@ from django.shortcuts import render, redirect
 from django.views import View
 from django.contrib.auth import authenticate, login
 from django.contrib import messages
-from .forms import UserForm
 from .forms import RideForm 
 
 def landing_page(request):
@@ -28,33 +27,5 @@ def landing_page(request):
         "msg": msg
     })
 
-def login(request):
-    if request.method == "POST":
-        username = request.POST.get("username")
-        password = request.POST.get("password")
-
-        user = authenticate(request, username=username, password=password)
-
-        if user is not None:
-            login(request, user)
-            return redirect("TrikeGo_app/landing") 
-        else:
-            messages.error(request, "Invalid username or password")
-
-    return render(request, "TrikeGo_app/landing.html")
-
-def register_page(request):
-    template_name = 'TrikeGo_app/register.html'
-
-    def get(self, request):
-        form = UserForm()
-        return render(request, self.template_name,{'form': form})
-
-    def post(self, request):
-        customer = UserForm(request.POST)
-        if customer.is_valid():
-            customer.save()
-            return redirect('user:login')
-    return render(request, "TrikeGo_app/register.html")
 
 
