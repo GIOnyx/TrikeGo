@@ -29,6 +29,7 @@ class Driver(models.Model):
     date_hired = models.DateField()
     years_of_service = models.IntegerField()
     is_available = models.BooleanField(default=True)
+    license_image_url = models.URLField(blank=True, null=True)
 
     def __str__(self):
         return f"Driver: {self.user.username}"
