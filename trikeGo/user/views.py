@@ -26,7 +26,13 @@ class Login(View):
 
         if user is not None:
             login(request, user)
-            return redirect("user:logged_in") 
+            # Redirect based on role
+            if getattr(user, 'trikego_user', None) == 'D':
+                return redirect('user:driver_dashboard')
+            elif getattr(user, 'trikego_user', None) == 'R':
+                return redirect('user:rider_dashboard')
+            else:
+                return redirect("user:logged_in") 
         else:
             messages.error(request, "Invalid username or password")
             return render(request, self.template_name)
@@ -89,3 +95,25 @@ class logged_in(View):
             return render(request, self.template_name)
         else:
             return redirect('user:landing')
+
+
+class RiderDashboard(View):
+    template_name = 'TrikeGo_app/rider_dashboard.html'
+
+    def get(self, request):
+        if not request.user.is_authenticated:
+            return redirect('user:landing')
+        if getattr(request.user, 'trikego_user', None) != 'R':
+            return redirect('user:landing')
+        return render(request, self.template_name)
+
+
+class DriverDashboard(View):
+    template_name = 'TrikeGo_app/driver_dashboard.html'
+
+    def get(self, request):
+        if not request.user.is_authenticated:
+            return redirect('user:landing')
+        if getattr(request.user, 'trikego_user', None) != 'D':
+            return redirect('user:landing')
+        return render(request, self.template_name)
