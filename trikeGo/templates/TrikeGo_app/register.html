@@ -22,33 +22,18 @@
         <div class="divider"><span>or continue with email</span></div>
         <form method="POST" action="{% url 'user:register' %}">
           {% csrf_token %}
-          <input type="hidden" name="user_type" value="{{ user_type }}" />
-          <!--<input type="text" name="username" placeholder="Username" required />-->
-          {{ form.username }}
-          <!--<input type="text" name="username" placeholder="Email" required />-->
-          {{ form.email }}
-          <!--<input type="text" name="username" placeholder="First Name" required />-->
-          {{ form.first_name }}
-          <!--<input type="text" name="username" placeholder="Last Name" required />-->
-          {{ form.last_name }}
-          <!--<input type="password" name="password" placeholder="Password" required />-->
-          {{ form.password1 }}
-          <!--<input type="password" name="password" placeholder="Confirm Password" required />-->
-          {{ form.password2 }}
-
+           <input type="hidden" name="user_type" value="{{ user_type }}" />
           {% if user_type == 'driver' %}
           <input type="text" name="license_number" placeholder="Driver’s license number" required />
           <input type="url" name="license_image_url" placeholder="Link to driver’s license image" />
           {% endif %}
 
-
           {% if form.errors %}
           <div class="error-message">
             {{ form.errors }}
           </div>
-        {% endif %}
-
-        
+          {% endif %}
+          
           <button type="submit" class="btn primary wide">Create account</button>
         </form>
         <p class="foot">Already have an account? <a href="{% url 'user:landing' %}">Log in</a></p>
