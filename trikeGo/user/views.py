@@ -3,6 +3,8 @@ from django.contrib.auth import authenticate, login
 from django.contrib import messages
 from django.views import View
 from .forms import CustomerForm
+from .models import Driver, Rider
+from datetime import date
 
 # Create your views here.
 class landing_page(View):
@@ -37,14 +39,33 @@ class register_page(View):
 
     def get(self, request):
         form = CustomerForm()
-        return render(request, self.template_name,{'form': form})
+        user_type = request.GET.get('type', 'rider')
+        return render(request, self.template_name,{'form': form, 'user_type': user_type})
 
     def post(self, request):
         form = CustomerForm(request.POST)
+        user_type = request.POST.get('user_type', 'rider')
         if form.is_valid():
-            form.save()
+            user = form.save()
+            if user_type == 'driver':
+                license_number = request.POST.get('license_number')
+                license_image_url = request.POST.get('license_image_url')
+                if not license_number:
+                    messages.error(request, "Driver’s license number is required for driver registration.")
+                    return render(request, self.template_name, {'form': form, 'user_type': user_type})
+                Driver.objects.create(
+                    user=user,
+                    license_number=license_number,
+                    license_expiry=date.today(),
+                    date_hired=date.today(),
+                    years_of_service=0,
+                    is_available=True,
+                    license_image_url=license_image_url
+                )
+            else:
+                Rider.objects.create(user=user)
             return redirect('user:landing')
-        return render(request, self.template_name, {'form': form})
+        return render(request, self.template_name, {'form': form, 'user_type': user_type})
     
 class logged_in(View):
     template_name = 'TrikeGo_app/tempLoggedIn.html'
