@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rider Dashboard - TrikeGo</title>
+    <title>Admin Dashboard - TrikeGo</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -42,15 +42,20 @@
             font-weight: bold;
             color: #555;
         }
-        .loyalty-points {
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        .stat-card {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 1rem;
             border-radius: 8px;
             text-align: center;
-            margin: 1rem 0;
         }
-        .points-number {
+        .stat-number {
             font-size: 2rem;
             font-weight: bold;
         }
@@ -87,6 +92,10 @@
             background-color: #ffc107;
             color: #212529;
         }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
         .logout-btn {
             float: right;
             background-color: #dc3545;
@@ -95,96 +104,86 @@
             text-decoration: none;
             border-radius: 4px;
         }
-        .booking-form {
-            background: #f8f9fa;
-            padding: 1rem;
-            border-radius: 8px;
-            margin-top: 1rem;
-        }
-        .form-group {
-            margin-bottom: 1rem;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: bold;
-        }
-        .form-group input, .form-group select {
-            width: 100%;
-            padding: 0.5rem;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Rider Dashboard</h1>
+        <h1>Admin Dashboard</h1>
         <a href="{% url 'user:landing' %}" class="logout-btn">Logout</a>
     </div>
 
     <div class="container">
         <div class="dashboard-card">
             <h2>Welcome, {{ user.first_name }} {{ user.last_name }}!</h2>
-            <p>Rider ID: {{ user.username }}</p>
+            <p>Admin ID: {{ user.username }}</p>
         </div>
 
-        {% if rider_profile %}
+        {% if admin_profile %}
         <div class="dashboard-card">
-            <div class="loyalty-points">
-                <h3>Loyalty Points</h3>
-                <div class="points-number">{{ rider_profile.loyalty_points }}</div>
-                <p>Earn points with every ride!</p>
+            <h3>Admin Profile</h3>
+            <div class="profile-info">
+                <div class="info-item">
+                    <span class="info-label">Position:</span>
+                    <span>{{ admin_profile.position }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Date Hired:</span>
+                    <span>{{ admin_profile.date_hired }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Years of Service:</span>
+                    <span>{{ admin_profile.years_of_service }}</span>
+                </div>
             </div>
         </div>
         {% else %}
         <div class="dashboard-card">
-            <h3>Rider Profile Not Found</h3>
-            <p>Your rider profile is not set up yet. Please contact support.</p>
+            <h3>Admin Profile Not Found</h3>
+            <p>Your admin profile is not set up yet. Please contact support.</p>
         </div>
         {% endif %}
 
         <div class="dashboard-card">
-            <h3>Book a Ride</h3>
-            <div class="booking-form">
-                <div class="form-group">
-                    <label for="pickup">Pickup Location:</label>
-                    <input type="text" id="pickup" placeholder="Enter pickup address">
+            <h3>System Overview</h3>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">0</div>
+                    <div>Total Users</div>
                 </div>
-                <div class="form-group">
-                    <label for="destination">Destination:</label>
-                    <input type="text" id="destination" placeholder="Enter destination address">
+                <div class="stat-card">
+                    <div class="stat-number">0</div>
+                    <div>Active Drivers</div>
                 </div>
-                <div class="form-group">
-                    <label for="ride_type">Ride Type:</label>
-                    <select id="ride_type">
-                        <option value="standard">Standard</option>
-                        <option value="premium">Premium</option>
-                        <option value="shared">Shared</option>
-                    </select>
+                <div class="stat-card">
+                    <div class="stat-number">0</div>
+                    <div>Total Rides</div>
                 </div>
-                <button class="btn btn-primary" style="width: 100%;">Find Available Drivers</button>
+                <div class="stat-card">
+                    <div class="stat-number">0</div>
+                    <div>Revenue</div>
+                </div>
             </div>
         </div>
 
         <div class="dashboard-card">
-            <h3>Quick Actions</h3>
+            <h3>Management Tools</h3>
             <div class="action-buttons">
-                <a href="#" class="btn btn-primary">Book Ride</a>
-                <a href="#" class="btn btn-secondary">Ride History</a>
-                <a href="#" class="btn btn-success">Payment Methods</a>
-                <a href="#" class="btn btn-warning">Support</a>
+                <a href="#" class="btn btn-primary">User Management</a>
+                <a href="#" class="btn btn-secondary">Driver Management</a>
+                <a href="#" class="btn btn-success">Ride Management</a>
+                <a href="#" class="btn btn-warning">Reports</a>
+                <a href="#" class="btn btn-danger">System Settings</a>
             </div>
         </div>
 
         <div class="dashboard-card">
-            <h3>Recent Rides</h3>
-            <p>No recent rides to display.</p>
+            <h3>Recent Activity</h3>
+            <p>No recent activity to display.</p>
         </div>
 
         <div class="dashboard-card">
-            <h3>Active Booking</h3>
-            <p>No active booking.</p>
+            <h3>System Alerts</h3>
+            <p>No alerts at this time.</p>
         </div>
     </div>
 </body>
