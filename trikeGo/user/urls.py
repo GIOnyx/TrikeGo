@@ -8,4 +8,6 @@ urlpatterns = [
     path("login/", views.Login.as_view(), name="login"),
     path('register/', views.register_page.as_view(), name='register'),
     path('logged_in/', views.logged_in.as_view(), name='logged_in'),
+    path('rider/', views.RiderDashboard.as_view(), name='rider_dashboard'),
+    path('driver/', views.DriverDashboard.as_view(), name='driver_dashboard'),
 ]

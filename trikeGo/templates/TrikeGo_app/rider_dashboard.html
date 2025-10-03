@@ -1,0 +1,45 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrikeGo - Rider Dashboard</title>
+  <link rel="stylesheet" href="{% static 'TrikeGo_app/css/rider_dashboard.css' %}">
+</head>
+<body>
+  <div class="dashboard">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="logo">TrikeGo</div>
+      <nav>
+        <ul>
+          <li><i class="icon">🚖</i></li>
+          <li><i class="icon">🕒</i></li>
+          <li><i class="icon">💳</i></li>
+          <li><i class="icon">⚙️</i></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+      <div class="map-area">
+        <div class="map-overlay">
+          <h4>Select Pickup & Destination</h4>
+          <!-- Map placeholder -->
+        </div>
+      </div>
+
+      <!-- Driver Info Card -->
+      <div class="trip-card">
+        <h3>Your Driver</h3>
+        <p><strong>Name:</strong> Charlie Kirk</p>
+        <p><strong>Vehicle:</strong> RUSSIAN 800XOOM (RED)</p>
+        <p><strong>Plate:</strong> AB-123-XY</p>
+        <p><strong>Fare:</strong> $9.24</p>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
