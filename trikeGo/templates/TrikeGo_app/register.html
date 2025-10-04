@@ -13,37 +13,65 @@
     <div class="hero-overlay"></div>
     <div class="container" style="position:relative;z-index:1">
       <div class="modal-card" style="max-width:520px;margin:10vh auto">
-        <h2>Create your Account</h2>
-        <p class="sub">Join TrikeGo to ride or drive.</p>
+        {% if user_type == 'driver' %}
+          <h2>Create your Driver Account</h2>
+          <p class="sub">Join TrikeGo as a driver and start earning.</p>
+        {% else %}
+          <h2>Create your Rider Account</h2>
+          <p class="sub">Join TrikeGo to get affordable rides.</p>
+        {% endif %}
+        
         <div class="provider-row">
           <a class="btn provider">Google</a>
           <a class="btn provider">Facebook</a>
         </div>
         <div class="divider"><span>or continue with email</span></div>
+        
         <form method="POST" action="{% url 'user:register' %}">
           {% csrf_token %}
-          
-          <!-- Hidden field to track registration type -->
           <input type="hidden" name="user_type" value="{{ user_type }}">
           
-          <h3 style="margin-bottom: 1rem;">Register as {{ user_type|title }}</h3>
+          <!-- Basic user information -->
+          <input type="text" name="username" placeholder="Choose a username">
+          <input type="email" name="email" placeholder="Enter your email address">
+          <input type="text" name="first_name" placeholder="First name">
+          <input type="text" name="last_name" placeholder="Last name">
+          <input type="password" name="password1" placeholder="Enter a password">
+          <input type="password" name="password2" placeholder="Confirm your password">
           
-          {{ form.username }}
-          {{ form.email }}
-          {{ form.first_name }}
-          {{ form.last_name }}
-          {{ form.password1 }}
-          {{ form.password2 }}
-        
-          {% if form.errors %}
-          <div class="error-message">
-            {{ form.errors }}
-          </div>
+          <!-- Driver-specific fields -->
+          {% if user_type == 'driver' %}
+            <input type="text" name="license_number" placeholder="Driver's License Number" required />
+            <input type="url" name="license_image_url" placeholder="License Image URL (Optional)" />
           {% endif %}
-          
-          <button type="submit" class="btn primary wide">Create account</button>
+
+          {% if form.errors %}
+            <div class="error-message">
+              {{ form.errors }}
+            </div>
+          {% endif %}
+
+          {% if messages %}
+            <ul>
+              {% for message in messages %}
+                <li>{{ message }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        
+          <button type="submit" class="btn primary wide">
+            {% if user_type == 'driver' %}Create Driver Account{% else %}Create Rider Account{% endif %}
+          </button>
         </form>
-        <p class="foot">Already have an account? <a href="{% url 'user:landing' %}">Log in</a></p>
+        
+        <p class="foot">
+          Already have an account? <a href="{% url 'user:landing' %}">Log in</a>
+          {% if user_type == 'driver' %}
+            | <a href="{% url 'user:register' %}?type=rider">Register as Rider</a>
+          {% else %}
+            | <a href="{% url 'user:register' %}?type=driver">Register as Driver</a>
+          {% endif %}
+        </p>
       </div>
     </div>
   </section>

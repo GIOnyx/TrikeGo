@@ -1,45 +1,191 @@
-{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TrikeGo - Rider Dashboard</title>
-  <link rel="stylesheet" href="{% static 'TrikeGo_app/css/rider_dashboard.css' %}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rider Dashboard - TrikeGo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .dashboard-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .profile-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+        .info-item {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #eee;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #555;
+        }
+        .loyalty-points {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+            margin: 1rem 0;
+        }
+        .points-number {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            flex: 1;
+            min-width: 150px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .logout-btn {
+            float: right;
+            background-color: #dc3545;
+            color: white;
+            padding: 0.5rem 1rem;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        .booking-form {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
 </head>
 <body>
-  <div class="dashboard">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <div class="logo">TrikeGo</div>
-      <nav>
-        <ul>
-          <li><i class="icon">🚖</i></li>
-          <li><i class="icon">🕒</i></li>
-          <li><i class="icon">💳</i></li>
-          <li><i class="icon">⚙️</i></li>
-        </ul>
-      </nav>
-    </aside>
+    <div class="header">
+        <h1>Rider Dashboard</h1>
+        <a href="{% url 'user:landing' %}" class="logout-btn">Logout</a>
+    </div>
 
-    <!-- Main Content -->
-    <main class="main">
-      <div class="map-area">
-        <div class="map-overlay">
-          <h4>Select Pickup & Destination</h4>
-          <!-- Map placeholder -->
+    <div class="container">
+        <div class="dashboard-card">
+            <h2>Welcome, {{ user.first_name }} {{ user.last_name }}!</h2>
+            <p>Rider ID: {{ user.username }}</p>
         </div>
-      </div>
 
-      <!-- Driver Info Card -->
-      <div class="trip-card">
-        <h3>Your Driver</h3>
-        <p><strong>Name:</strong> Charlie Kirk</p>
-        <p><strong>Vehicle:</strong> RUSSIAN 800XOOM (RED)</p>
-        <p><strong>Plate:</strong> AB-123-XY</p>
-        <p><strong>Fare:</strong> $9.24</p>
-      </div>
-    </main>
-  </div>
+        {% if rider_profile %}
+        <div class="dashboard-card">
+            <div class="loyalty-points">
+                <h3>Loyalty Points</h3>
+                <div class="points-number">{{ rider_profile.loyalty_points }}</div>
+                <p>Earn points with every ride!</p>
+            </div>
+        </div>
+        {% else %}
+        <div class="dashboard-card">
+            <h3>Rider Profile Not Found</h3>
+            <p>Your rider profile is not set up yet. Please contact support.</p>
+        </div>
+        {% endif %}
+
+        <div class="dashboard-card">
+            <h3>Book a Ride</h3>
+            <div class="booking-form">
+                <div class="form-group">
+                    <label for="pickup">Pickup Location:</label>
+                    <input type="text" id="pickup" placeholder="Enter pickup address">
+                </div>
+                <div class="form-group">
+                    <label for="destination">Destination:</label>
+                    <input type="text" id="destination" placeholder="Enter destination address">
+                </div>
+                <div class="form-group">
+                    <label for="ride_type">Ride Type:</label>
+                    <select id="ride_type">
+                        <option value="standard">Standard</option>
+                        <option value="premium">Premium</option>
+                        <option value="shared">Shared</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" style="width: 100%;">Find Available Drivers</button>
+            </div>
+        </div>
+
+        <div class="dashboard-card">
+            <h3>Quick Actions</h3>
+            <div class="action-buttons">
+                <a href="#" class="btn btn-primary">Book Ride</a>
+                <a href="#" class="btn btn-secondary">Ride History</a>
+                <a href="#" class="btn btn-success">Payment Methods</a>
+                <a href="#" class="btn btn-warning">Support</a>
+            </div>
+        </div>
+
+        <div class="dashboard-card">
+            <h3>Recent Rides</h3>
+            <p>No recent rides to display.</p>
+        </div>
+
+        <div class="dashboard-card">
+            <h3>Active Booking</h3>
+            <p>No active booking.</p>
+        </div>
+    </div>
 </body>
 </html>

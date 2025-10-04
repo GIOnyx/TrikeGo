@@ -1,45 +1,166 @@
-{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TrikeGo - Driver Dashboard</title>
-  <link rel="stylesheet" href="{% static 'TrikeGo_app/css/driver_dashboard.css' %}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Dashboard - TrikeGo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .dashboard-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .profile-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+        .info-item {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #eee;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #555;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: bold;
+        }
+        .status-available {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-busy {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .logout-btn {
+            float: right;
+            background-color: #dc3545;
+            color: white;
+            padding: 0.5rem 1rem;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+    </style>
 </head>
 <body>
-  <div class="dashboard">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <div class="logo">TrikeGo</div>
-      <nav>
-        <ul>
-          <li><i class="icon">🏠</i></li>
-          <li><i class="icon">🚘</i></li>
-          <li><i class="icon">📊</i></li>
-          <li><i class="icon">⚙️</i></li>
-        </ul>
-      </nav>
-    </aside>
+    <div class="header">
+        <h1>Driver Dashboard</h1>
+        <a href="{% url 'user:landing' %}" class="logout-btn">Logout</a>
+    </div>
 
-    <!-- Main Content -->
-    <main class="main">
-      <div class="map-area">
-        <div class="map-overlay">
-          <h4>Real-time Tracking</h4>
-          <!-- Map placeholder -->
+    <div class="container">
+        <div class="dashboard-card">
+            <h2>Welcome, {{ user.first_name }} {{ user.last_name }}!</h2>
+            <p>Driver ID: {{ user.username }}</p>
         </div>
-      </div>
 
-      <!-- Trip Info Card -->
-      <div class="trip-card">
-        <h3>Current Ride</h3>
-        <p><strong>Passenger:</strong> John Doe</p>
-        <p><strong>Destination:</strong> Elm Street</p>
-        <p><strong>Status:</strong> On Route</p>
-        <p><strong>Fare:</strong> $12.50</p>
-      </div>
-    </main>
-  </div>
+        {% if driver_profile %}
+        <div class="dashboard-card">
+            <h3>Driver Profile</h3>
+            <div class="profile-info">
+                <div class="info-item">
+                    <span class="info-label">License Number:</span>
+                    <span>{{ driver_profile.license_number }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">License Expiry:</span>
+                    <span>{{ driver_profile.license_expiry }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Date Hired:</span>
+                    <span>{{ driver_profile.date_hired }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Years of Service:</span>
+                    <span>{{ driver_profile.years_of_service }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <span class="status-badge {% if driver_profile.is_available %}status-available{% else %}status-busy{% endif %}">
+                        {% if driver_profile.is_available %}Available{% else %}Busy{% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="dashboard-card">
+            <h3>Driver Profile Not Found</h3>
+            <p>Your driver profile is not set up yet. Please contact support.</p>
+        </div>
+        {% endif %}
+
+        <div class="dashboard-card">
+            <h3>Quick Actions</h3>
+            <div class="action-buttons">
+                <a href="#" class="btn btn-primary">View Bookings</a>
+                <a href="#" class="btn btn-secondary">Update Profile</a>
+                {% if driver_profile and driver_profile.is_available %}
+                    <a href="#" class="btn btn-danger">Go Offline</a>
+                {% else %}
+                    <a href="#" class="btn btn-success">Go Online</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="dashboard-card">
+            <h3>Recent Activity</h3>
+            <p>No recent activity to display.</p>
+        </div>
+    </div>
 </body>
 </html>
