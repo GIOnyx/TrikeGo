@@ -3,7 +3,7 @@ from django.contrib.auth import authenticate, login
 from django.contrib import messages
 from django.views import View
 from .forms import CustomerForm
-from .models import Driver, Rider, CustomUser
+from .models import Driver, Rider, Admin, CustomUser
 from datetime import date
 
 class landing_page(View):
