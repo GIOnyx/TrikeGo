@@ -1,0 +1,50 @@
+body {
+    font-family: Arial, sans-serif;
+    background: #f5f6f8;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .admin-header {
+    background: #18c26e;
+    color: white;
+    padding: 20px;
+    text-align: center;
+  }
+  
+  .admin-content {
+    padding: 20px;
+  }
+  
+  .dashboard-section {
+    background: white;
+    margin-bottom: 30px;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  }
+  
+  .dashboard-section h2 {
+    margin-top: 0;
+    color: #18c26e;
+  }
+  
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+  }
+  
+  table, th, td {
+    border: 1px solid #ddd;
+  }
+  
+  th, td {
+    text-align: left;
+    padding: 10px;
+  }
+  
+  th {
+    background: #f0f0f0;
+  }
+  

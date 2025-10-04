@@ -2,8 +2,8 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login
 from django.contrib import messages
 from django.views import View
-from .forms import CustomerForm, DriverRegistrationForm, RiderRegistrationForm
-from .models import Rider, Driver, Admin
+from .forms import CustomerForm
+from .models import Driver, Rider, CustomUser
 from datetime import date
 
 class landing_page(View):
@@ -26,13 +26,14 @@ class Login(View):
 
         if user is not None:
             login(request, user)
-            # Redirect based on user role
-            if user.trikego_user == 'D':
-                return redirect("user:driver_dashboard")
-            elif user.trikego_user == 'R':
-                return redirect("user:rider_dashboard")
-            elif user.trikego_user == 'A':
-                return redirect("user:admin_dashboard")
+
+            # Redirect based on role
+            if getattr(user, 'trikego_user', None) == 'D':
+                return redirect('user:driver_dashboard')
+            elif getattr(user, 'trikego_user', None) == 'R':
+                return redirect('user:rider_dashboard')
+            elif getattr(user, 'trikego_user', None) == 'A':
+                return redirect('user:admin_dashboard')
             else:
                 # Fallback for users without role
                 return redirect("user:logged_in")
@@ -178,3 +179,28 @@ class admin_dashboard(View):
             return render(request, self.template_name, context)
         else:
             return redirect('user:landing')
+        return render(request, self.template_name)
+
+class AdminDashboard(View):
+    template_name = 'TrikeGo_app/admin_dashboard.html'
+
+    def get(self, request):
+        if not request.user.is_authenticated:
+            return redirect('user:landing')
+        if getattr(request.user, 'trikego_user', None) != 'A':
+            return redirect('user:landing')
+
+        # Fetch all drivers and riders
+        drivers = Driver.objects.select_related("user").all()
+        riders = Rider.objects.select_related("user").all()
+
+        # Alternative: if you want ALL users by role directly from CustomUser
+        all_drivers = CustomUser.objects.filter(trikego_user="D")
+        all_riders = CustomUser.objects.filter(trikego_user="R")
+
+        return render(request, self.template_name, {
+            "drivers": drivers,
+            "riders": riders,
+            "all_drivers": all_drivers,
+            "all_riders": all_riders,
+        })
