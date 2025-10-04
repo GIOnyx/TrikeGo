@@ -3,7 +3,7 @@ from django.contrib.auth import authenticate, login
 from django.contrib import messages
 from django.views import View
 from .forms import CustomerForm
-from .models import Rider, Driver
+from .models import Driver, Rider, CustomUser
 from datetime import date
 
 class landing_page(View):
@@ -26,11 +26,15 @@ class Login(View):
 
         if user is not None:
             login(request, user)
+            print("DEBUG: username:", user.username, "role:", getattr(user, "trikego_user", None))
+
             # Redirect based on role
             if getattr(user, 'trikego_user', None) == 'D':
                 return redirect('user:driver_dashboard')
             elif getattr(user, 'trikego_user', None) == 'R':
                 return redirect('user:rider_dashboard')
+            elif getattr(user, 'trikego_user', None) == 'A':
+                return redirect('user:admin_dashboard')
             else:
                 return redirect("user:logged_in") 
         else:
@@ -117,3 +121,27 @@ class DriverDashboard(View):
         if getattr(request.user, 'trikego_user', None) != 'D':
             return redirect('user:landing')
         return render(request, self.template_name)
+
+class AdminDashboard(View):
+    template_name = 'TrikeGo_app/admin_dashboard.html'
+
+    def get(self, request):
+        if not request.user.is_authenticated:
+            return redirect('user:landing')
+        if getattr(request.user, 'trikego_user', None) != 'A':
+            return redirect('user:landing')
+
+        # Fetch all drivers and riders
+        drivers = Driver.objects.select_related("user").all()
+        riders = Rider.objects.select_related("user").all()
+
+        # Alternative: if you want ALL users by role directly from CustomUser
+        all_drivers = CustomUser.objects.filter(trikego_user="D")
+        all_riders = CustomUser.objects.filter(trikego_user="R")
+
+        return render(request, self.template_name, {
+            "drivers": drivers,
+            "riders": riders,
+            "all_drivers": all_drivers,
+            "all_riders": all_riders,
+        })

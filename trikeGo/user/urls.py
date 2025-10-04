@@ -10,4 +10,5 @@ urlpatterns = [
     path('logged_in/', views.logged_in.as_view(), name='logged_in'),
     path('rider/', views.RiderDashboard.as_view(), name='rider_dashboard'),
     path('driver/', views.DriverDashboard.as_view(), name='driver_dashboard'),
+    path('trike-admin/dashboard/', views.AdminDashboard.as_view(), name='admin_dashboard'),
 ]
