@@ -1,50 +1,151 @@
+/* Reset some defaults */
+body, h1, h2, p, table {
+  margin: 0;
+  padding: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
 body {
-    font-family: Arial, sans-serif;
-    background: #f5f6f8;
-    margin: 0;
-    padding: 0;
-  }
-  
+  background-color: #f4f6f9;
+  color: #333;
+  line-height: 1.6;
+}
+
+/* Header */
+.admin-header {
+  background: linear-gradient(135deg, #0078d7, #005a9e);
+  color: #fff;
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.admin-header h1 {
+  font-size: 1.8rem;
+  font-weight: 600;
+}
+
+.admin-header p {
+  font-size: 1rem;
+  opacity: 0.9;
+}
+
+/* Main content */
+.admin-content {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: auto;
+}
+
+/* Dashboard sections */
+.dashboard-section {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.dashboard-section h2 {
+  margin-bottom: 1rem;
+  font-size: 1.4rem;
+  color: #005a9e;
+  border-bottom: 2px solid #e0e0e0;
+  padding-bottom: 0.5rem;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+thead {
+  background-color: #f0f4f8;
+}
+
+th, td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+th {
+  font-weight: 600;
+  color: #444;
+}
+
+tbody tr:hover {
+  background-color: #f9fbfd;
+}
+
+/* Links */
+a {
+  color: #0078d7;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Buttons */
+button {
+  background-color: #0078d7;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s ease;
+}
+
+button:hover {
+  background-color: #005a9e;
+}
+
+button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* Responsive tweaks */
+@media (max-width: 768px) {
   .admin-header {
-    background: #18c26e;
-    color: white;
-    padding: 20px;
-    text-align: center;
+    flex-direction: column;
+    align-items: flex-start;
   }
-  
-  .admin-content {
-    padding: 20px;
+
+  table, thead, tbody, th, td, tr {
+    display: block;
   }
-  
-  .dashboard-section {
-    background: white;
-    margin-bottom: 30px;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+
+  thead {
+    display: none;
   }
-  
-  .dashboard-section h2 {
-    margin-top: 0;
-    color: #18c26e;
+
+  tr {
+    margin-bottom: 1rem;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 0.5rem;
+    background: #fff;
   }
-  
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 10px;
+
+  td {
+    border: none;
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem;
   }
-  
-  table, th, td {
-    border: 1px solid #ddd;
+
+  td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #555;
   }
-  
-  th, td {
-    text-align: left;
-    padding: 10px;
-  }
-  
-  th {
-    background: #f0f0f0;
-  }
-  
+}
