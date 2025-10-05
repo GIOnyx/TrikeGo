@@ -36,13 +36,14 @@
           <input type="email" name="email" placeholder="Enter your email address">
           <input type="text" name="first_name" placeholder="First name">
           <input type="text" name="last_name" placeholder="Last name">
+          <input type="text" name="phone" placeholder="Phone number (09XXXXXXXXX)">
           <input type="password" name="password1" placeholder="Enter a password">
           <input type="password" name="password2" placeholder="Confirm your password">
           
           <!-- Driver-specific fields -->
           {% if user_type == 'driver' %}
             <input type="text" name="license_number" placeholder="Driver's License Number" required />
-            <input type="url" name="license_image_url" placeholder="License Image URL (Optional)" />
+            <input type="url" name="license_image_url" placeholder="License Image URL" />
           {% endif %}
 
           {% if form.errors %}
