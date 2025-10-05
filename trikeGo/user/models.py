@@ -8,6 +8,7 @@ class CustomUser(AbstractUser):
         ('D', 'Driver'),
     )
     
+    phone = models.CharField(max_length=20, blank=True, null=True)
     trikego_user = models.CharField(max_length=1, choices=USER_TYPES, default='R')
 
 
@@ -20,7 +21,7 @@ class Admin(models.Model):
 
 class Driver(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, null=True, blank=True)
-    license_number = models.CharField(max_length=20)
+    license_number = models.CharField(max_length=11)
     license_image_url = models.URLField(blank=True, null=True)
     license_expiry = models.DateField()
     date_hired = models.DateField()
