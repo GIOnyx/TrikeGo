@@ -99,13 +99,29 @@ class RiderDashboard(View):
 
 class AdminDashboard(View):
     template_name = 'TrikeGo_app/admin_dashboard.html'
+
     def get(self, request):
         if not request.user.is_authenticated or getattr(request.user, 'trikego_user', None) != 'A':
             return redirect('user:landing')
 
-        return render(request, self.template_name, {
+        context = {
             "drivers": Driver.objects.select_related("user").all(),
             "riders": Rider.objects.select_related("user").all(),
-            "all_drivers": CustomUser.objects.filter(trikego_user="D"),
-            "all_riders": CustomUser.objects.filter(trikego_user="R"),
-        })
+            "users": CustomUser.objects.all(),
+        }
+        return render(request, self.template_name, context)
+
+    def post(self, request):
+        if not request.user.is_authenticated or getattr(request.user, 'trikego_user', None) != 'A':
+            return redirect('user:landing')
+
+        action = request.POST.get('action')
+        if action == 'toggle_verify':
+            driver_id = request.POST.get('driver_id')
+            if driver_id:
+                driver = Driver.objects.filter(id=driver_id).first()
+                if driver:
+                    driver.is_verified = not bool(driver.is_verified)
+                    driver.save(update_fields=["is_verified"])
+
+        return redirect('user:admin_dashboard')

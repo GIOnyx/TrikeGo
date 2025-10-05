@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Admin Dashboard - TrikeGo</title>
-  <link rel="stylesheet" href="{% static 'TrikeGo_app/css/admin_dashboard.css' %}">
+  <link rel="stylesheet" href="{% static 'TrikeGo_app/css/admin_dashboard.css' %}?=v2">
 </head>
 <body>
   <header class="admin-header">
@@ -19,24 +19,43 @@
       <table>
         <thead>
           <tr>
+            <th>Driver Name</th>
             <th>Username</th>
-            <th>License Number</th>
-            <th>License Expiry</th>
-            <th>Years of Service</th>
-            <th>Available</th>
+            <th>Phone</th>
+            <th>License No.</th>
+            <th>License Image URL</th>
+            <th>Status</th>
+            <th>Verified</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {% for driver in drivers %}
           <tr>
+            <td>{{ driver.user.first_name }} {{ driver.user.last_name }}</td>
             <td>{{ driver.user.username }}</td>
+            <td>{{ driver.user.phone }}</td>
             <td>{{ driver.license_number }}</td>
-            <td>{{ driver.license_expiry }}</td>
-            <td>{{ driver.years_of_service }}</td>
-            <td>{{ driver.is_available|yesno:"Yes,No" }}</td>
+            <td>
+              {% if driver.license_image_url %}
+                <a href="{{ driver.license_image_url }}" target="_blank">View Image</a>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ driver.status }}</td>
+            <td>{{ driver.is_verified|yesno:"Yes,No" }}</td>
+            <td>
+              <form method="post" action="{% url 'user:admin_dashboard' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="toggle_verify" />
+                <input type="hidden" name="driver_id" value="{{ driver.id }}" />
+                <button type="submit">{% if driver.is_verified %}Unverify{% else %}Verify{% endif %}</button>
+              </form>
+            </td>
           </tr>
           {% empty %}
-          <tr><td colspan="5">No drivers found.</td></tr>
+          <tr><td colspan="8">No drivers found.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -47,20 +66,24 @@
       <table>
         <thead>
           <tr>
+            <th>Rider Name</th>
             <th>Username</th>
             <th>Email</th>
+            <th>Phone</th>
             <th>Loyalty Points</th>
           </tr>
         </thead>
         <tbody>
           {% for rider in riders %}
           <tr>
+            <td>{{ rider.user.first_name }} {{ rider.user.last_name }}</td>
             <td>{{ rider.user.username }}</td>
             <td>{{ rider.user.email }}</td>
+            <td>{{ rider.user.phone }}</td>
             <td>{{ rider.loyalty_points }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="3">No riders found.</td></tr>
+          <tr><td colspan="5">No riders found.</td></tr>
           {% endfor %}
         </tbody>
       </table>

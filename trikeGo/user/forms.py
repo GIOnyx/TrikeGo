@@ -59,8 +59,11 @@ class DriverRegistrationForm(UserCreationForm):
 
     def clean_license_image_url(self):
         url = self.cleaned_data.get('license_image_url', '')
-        if not re.match(r'^https?://.+\.(jpg|jpeg|png)$', url, flags=re.IGNORECASE):
-            raise ValidationError('License image URL must be a valid URL ending with .jpg, .jpeg, or .png')
+        validator = URLValidator(schemes=['http', 'https'])
+        try:
+            validator(url)
+        except ValidationError:
+            raise ValidationError('License image URL must be a valid HTTP/HTTPS URL')
         return url
 
 class RiderRegistrationForm(UserCreationForm):

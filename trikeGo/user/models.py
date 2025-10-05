@@ -26,7 +26,13 @@ class Driver(models.Model):
     license_expiry = models.DateField()
     date_hired = models.DateField()
     years_of_service = models.IntegerField()
-    is_available = models.BooleanField(default=True)
+    STATUS_CHOICES = (
+        ('Offline', 'Offline'),
+        ('Online', 'Online'),
+        ('In_trip', 'In trip'),
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Offline')
+    is_verified = models.BooleanField(default=False)
 
 class Rider(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, null=True, blank=True)
