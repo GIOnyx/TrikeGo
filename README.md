@@ -1,56 +1,96 @@
-# 🚖 TrikeGo
+# TrikeGo
 
-**TrikeGo** is a web ride-hailing platform that modernizes tricycle operations with real-time booking, tracking, and fare guidance.  
-Commuters can request rides and view ETAs, while drivers get digital trip assignments and income tracking.  
-Focused on **affordability** and **accessibility**, TrikeGo brings app-based convenience to local communities and improves short-distance transport efficiency.
+**Modern Ride-Hailing for Tricycle Transportation**
 
----
-
-## 🛠️ Tech Stack
-
-- **Backend:** Python with the Django Framework  
-- **Database:** PostgreSQL (hosted on Supabase)  
-- **Frontend:** HTML5, CSS3, Vanilla JavaScript  
-- **Version Control:** Git & GitHub  
+TrikeGo is a web-based ride-hailing platform designed to modernize tricycle operations through real-time booking, tracking, and fare guidance. The platform connects commuters with drivers, enabling efficient short-distance transportation while maintaining affordability and accessibility for local communities.
 
 ---
 
-## ⚙️ Setup & Run Instructions
+## 📋 Table of Contents
+
+- [Tech Stack](#-tech-stack)
+- [Prerequisites](#-prerequisites)
+- [Setup & Installation](#-setup--installation)
+- [Running the Application](#-running-the-application)
+- [Project Structure](#-project-structure)
+- [Team Members](#-team-members)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| **Backend** | Python with Django Framework |
+| **Database** | PostgreSQL (hosted on Supabase) |
+| **Frontend** | HTML5, CSS3, Vanilla JavaScript |
+| **Version Control** | Git & GitHub |
+
+---
+
+## 📦 Prerequisites
+
+Before you begin, ensure you have the following installed:
+- Python 3.8 or higher
+- pip (Python package manager)
+- Git
+- PostgreSQL (or Supabase account)
+
+---
+
+## ⚙️ Setup & Installation
 
 ### 1. Clone the Repository
 ```bash
 git clone https://github.com/GIOnyx/CSIT327-G1-TrikeGo.git
 cd TrikeGo
-2. Create and Activate a Virtual Environment
-For Windows
-
-bash
+```
+### 2. Create and Activate a Virtual Environment
+For Windows:
+```bash
 python -m venv env
 env\Scripts\activate
-For macOS/Linux
-
-bash
+```
+For macOS/Linux:
+```bash
 python3 -m venv env
 source env/bin/activate
-3. Install Dependencies
-bash
+```
+### 3. Install Dependencies
+```bash
 pip install -r requirements.txt
-4. Apply Database Migrations
-bash
-python manage.py migrate
-5. Create a Superuser (for Admin Access)
-bash
-python manage.py createsuperuser
-6. Run the Development Server
-bash
-python manage.py runserver
-The application will be running at: 👉 http://127.0.0.1:8000/
+```
+### 4. Apply Database Migrations
+bashpython manage.py migrate
+### 5. Create a Superuser (for Admin Access)
+bashpython manage.py createsuperuser
+Follow the prompts to set up your admin credentials.
 
-👥 Team Members
-Name	Role	CIT-U Email
-Badinas, Gregory Ivan Onyx M.	Lead Developer	gregoryivanonyx.badinas@cit.edu
-Asia, Eron R.	Developer	eron.asia@cit.edu
-Amoguis, Philma Jenica B.	Developer	philmajenica.amoguis@cit.edu
-Betito, James Ruby P.	Product Owner	jamesruby.betito@cit.edu
-Baldon, Kirsten Shane T.	Business Analyst	kirstenshane.baldon@cit.edu
-Barangan, Mark Lorenz L.	Scrum Master	marklorenz.barangan@cit.edu
+### 6. Running the Application
+Start the development server:
+```bash
+python manage.py runserver
+```
+The application will be available at: http://127.0.0.1:8000/
+
+---
+## Team Members
+
+| Name | Role | CIT-U Email |
+|-----------|-----------|-----------|
+| **Badinas, Gregory Ivan Onyx M.** | Lead Developer | gregoryivanonyx.badinas@cit.edu |
+| **Asia, Eron R.** | Developer | eron.asia@cit.edu |
+| **Amoguis, Philma Jenica B.** | Developer | philmajenica.amoguis@cit.edu |
+| **Betito, James Ruby P.** | Product Owner | jamesruby.betito@cit.edu |
+| **Baldon, Kirsten Shane T.** | Business Analyst | kirstenshane.baldon@cit.edu |
+| **Barangan, Mark Lorenz L.** | Scrum Master | marklorenz.barangan@cit.edu |
+
+---
+## License
+
+This project is developed as part of CSIT327 coursework at Cebu Institute of Technology - University.
+
+---
+## Support
+
+For questions or support, please contact the development team through the CIT-U emails listed above.
