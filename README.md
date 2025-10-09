@@ -59,9 +59,9 @@ The application will be running at http://122.0.0.1:8000/.
 
 Team Members<br>
 Name    Role    CIT-U Email<br>
-Badinas Gregory Ivan Onyx M. | Lead Developer | gregoryivanonyx.badinas@cit.edu
-Asia, Eron R. | Developer | eron.asia@cit.edu
-Amoguis, Philma Jenica B. | Developer | philmajenica.amoguis@cit.edu
-Betito, James Ruby P. | Product Owner | jamesruby.betito@cit.edu
-Baldon, Kirsten Shane T. | Business Analyst | kirstenshane.baldon@cit.edu
+Badinas Gregory Ivan Onyx M. | Lead Developer | gregoryivanonyx.badinas@cit.edu<br>
+Asia, Eron R. | Developer | eron.asia@cit.edu<br>
+Amoguis, Philma Jenica B. | Developer | philmajenica.amoguis@cit.edu<br>
+Betito, James Ruby P. | Product Owner | jamesruby.betito@cit.edu<br>
+Baldon, Kirsten Shane T. | Business Analyst | kirstenshane.baldon@cit.edu<br>
 Barangan, Mark Lorenz L.  | Scrum Master | marklorenz.barangan@cit.edu
