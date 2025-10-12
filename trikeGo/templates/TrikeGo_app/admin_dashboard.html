@@ -13,6 +13,15 @@
     <p>Welcome, {{ request.user.username }}</p>
   </header>
 
+  {% if messages %}
+    <div class="messages" style="padding: 1rem 2rem;">
+        {% for message in messages %}
+            <div class="message {{ message.tags }}" >
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+  {% endif %}
   <main class="admin-content">
     <section class="dashboard-section">
       <h2>Drivers</h2>
@@ -20,7 +29,7 @@
         <thead>
           <tr>
             <th>Driver Name</th>
-            <th>Username</th>
+            <th>Username</th> 
             <th>Phone</th>
             <th>License No.</th>
             <th>License Image URL</th>
