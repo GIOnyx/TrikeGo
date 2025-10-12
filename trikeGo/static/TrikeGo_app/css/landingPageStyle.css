@@ -36,6 +36,25 @@ html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, 'Seg
 .controls{display:flex;gap:8px;align-items:center}
 .eta{margin-top:10px;color:#0f172a;font-weight:600}
 
+
+.messages-list {
+  list-style: none;
+  color: crimson;
+  padding: 0;
+  margin: 12px 0 0;
+}
+
+.message-item {
+  color: #ff6b6b; 
+  font-size: 14px;
+}
+
+.form-error {
+  color: #ff6b6b;
+  font-size: 14px;
+  margin: 5px 0 0;
+}
+
 .section{padding:60px 20px;background:#fff;color:#0f172a}
 
 /* Modal login */
