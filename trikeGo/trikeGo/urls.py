@@ -14,12 +14,19 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+# In trikeGo/trikeGo/urls.py
+
+# In trikeGo/trikeGo/urls.py
+
 from django.contrib import admin
 from django.urls import path, include
 
 urlpatterns = [
+    # Core Django URLs
     path('admin/', admin.site.urls),
-    #path('', include('TrikeGo_app.urls')),  send root URL to your app
-    path('', include('user.urls')),  # send 'user/' URLs to user app
-    path('', include('booking.urls')),  # send 'booking/' URLs to booking app
+    path('accounts/', include('django.contrib.auth.urls')),
+
+    # Your App URLs
+    path('booking/', include('booking.urls')),  # Handles all URLs starting with /booking/
+    path('', include('user.urls')),  # Handles user-related URLs like login, dashboards, etc.
 ]

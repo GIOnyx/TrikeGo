@@ -1,10 +1,12 @@
+# booking/urls.py
 from django.urls import path
-from .import views
+from . import views
 
-app_name='booking'
-
+app_name = 'booking'
 urlpatterns = [
-    path('new', views.BookView.as_view(), name='book'),
-    path('cancel/<int:booking_id>', views.CancelBooking.as_view(), name='cancel_booking'),
-    path('my_bookings', views.MyBookings.as_view(), name='my_bookings'),
+    path('create/', views.create_booking, name='create_booking'),
+    path('<int:booking_id>/', views.booking_detail, name='booking_detail'),
+    path('<int:booking_id>/cancel/', views.cancel_booking, name='cancel_booking'),
+    # Add other driver actions here (e.g., /start/, /complete/)
+
 ]

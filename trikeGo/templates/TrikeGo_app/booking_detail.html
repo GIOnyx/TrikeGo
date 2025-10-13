@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Booking Status - TrikeGo</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 2rem; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        .status-pending { color: #f0ad4e; }
+        .status-accepted { color: #5cb85c; }
+        .status-cancelled { color: #d9534f; }
+        .booking-details p { font-size: 1.1rem; line-height: 1.6; }
+        .booking-details strong { color: #555; }
+        .btn { padding: 0.75rem 1.5rem; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; text-decoration: none; display: inline-block; margin-top: 1rem; }
+        .btn-danger { background-color: #d9534f; color: white; }
+        .btn-disabled { background-color: #ccc; cursor: not-allowed; }
+        #message { margin-top: 1rem; padding: 1rem; border-radius: 5px; display: none; }
+        .msg-success { background-color: #d4edda; color: #155724; }
+        .msg-error { background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Booking #{{ booking.id }} Status</h1>
+        <hr>
+        <div class="booking-details">
+            <p><strong>From:</strong> {{ booking.pickup_address }}</p>
+            <p><strong>To:</strong> {{ booking.destination_address }}</p>
+            <p><strong>Status:</strong> <span class="status-{{ booking.status }}">{{ booking.get_status_display }}</span></p>
+        </div>
+
+        {% if booking.status == 'pending' or booking.status == 'accepted' %}
+            <button id="cancelBtn" class="btn btn-danger">Cancel Booking</button>
+        {% endif %}
+
+        <a href="{% url 'user:rider_dashboard' %}" class="btn" style="background-color: #6c757d; color: white;">Back to Dashboard</a>
+
+        <div id="message"></div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const cancelBtn = document.getElementById('cancelBtn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function() {
+                if (!confirm('Are you sure you want to cancel this ride?')) {
+                    return;
+                }
+
+                fetch("{% url 'booking:cancel_booking' booking.id %}", {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': '{{ csrf_token }}', // Django's security token
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const messageDiv = document.getElementById('message');
+                    messageDiv.textContent = data.message;
+                    messageDiv.style.display = 'block';
+
+                    if (data.status === 'success') {
+                        messageDiv.className = 'msg-success';
+                        cancelBtn.textContent = 'Cancelled';
+                        cancelBtn.disabled = true;
+                        cancelBtn.classList.add('btn-disabled');
+                        // Optionally, reload the page after a delay to show the updated status
+                        setTimeout(() => window.location.reload(), 2000);
+                    } else {
+                        messageDiv.className = 'msg-error';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    const messageDiv = document.getElementById('message');
+                    messageDiv.textContent = 'An unexpected error occurred.';
+                    messageDiv.className = 'msg-error';
+                    messageDiv.style.display = 'block';
+                });
+            });
+        }
+    });
+    </script>
+</body>
+</html>

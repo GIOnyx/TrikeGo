@@ -146,25 +146,13 @@
 
         <div class="dashboard-card">
             <h3>Book a Ride</h3>
-            <div class="booking-form">
-                <div class="form-group">
-                    <label for="pickup">Pickup Location:</label>
-                    <input type="text" id="pickup" placeholder="Enter pickup address">
-                </div>
-                <div class="form-group">
-                    <label for="destination">Destination:</label>
-                    <input type="text" id="destination" placeholder="Enter destination address">
-                </div>
-                <div class="form-group">
-                    <label for="ride_type">Ride Type:</label>
-                    <select id="ride_type">
-                        <option value="standard">Standard</option>
-                        <option value="premium">Premium</option>
-                        <option value="shared">Shared</option>
-                    </select>
-                </div>
-                <button class="btn btn-primary" style="width: 100%;">Find Available Drivers</button>
-            </div>
+            <form class="booking-form" method="POST" action="{% url 'booking:create_booking' %}">
+                {% csrf_token %}
+                
+                {{ booking_form.as_p }}
+
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Find a Trike</button>
+            </form>
         </div>
 
         <div class="dashboard-card">
