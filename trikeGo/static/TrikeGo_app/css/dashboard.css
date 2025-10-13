@@ -1,0 +1,265 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #f4f4f4;
+  min-height:100vh;
+  position:relative;
+  background: url('../images/bg.jpg') center/cover no-repeat fixed;
+}
+.header {
+  background:rgba(10,16,32,0.75);
+  backdrop-filter:saturate(140%) blur(6px);
+  color: white;
+  padding: 1rem;
+  text-align: center;
+}
+.container {
+  display: flex;
+  margin-top: 70px; /* avoid header overlap */
+  width: 100%;
+}
+
+/* Vertical sidebar card */
+.sidebar {
+  position: fixed;
+  top: 112px;
+  left: 0;
+  width: 240px;
+  height: calc(100vh - 112px);
+  background-color: rgba(10,16,32,0.75);
+  backdrop-filter:saturate(140%) blur(6px);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
+  padding: 1rem;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background-color: rgba(29, 46, 94, 0.75);
+  border-radius: 4px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(29, 46, 94, 0.75);
+}
+
+
+.sidebar h2 {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  color: #34495e;
+}
+
+/* Each dashboard card inside the sidebar */
+.dashboard-profile-card,
+.dashboard-driver-card,
+.dashboard-notdriver-card,
+.dashboard-loyaltypoints-card,
+.dashboard-notrider-card,
+.dashboard-quickaction-card,
+.dashboard-ridehistory-card,
+.dashboard-activebooks-card,
+.dashboard-activity-card {
+  background-color: #f9fafc;
+  border: 1px solid #e1e4e8;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dashboard-profile-card:hover,
+.dashboard-notdriver-card:hover,
+.dashboard-loyaltypoints-card:hover,
+.dashboard-notrider-card:hover,
+.dashboard-quickaction-card:hover,
+.dashboard-ridehistory-card:hover,
+.dashboard-activebooks-card:hover,
+.dashboard-activity-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+/* Card titles and text */
+.dashboard-profile-card h2,
+.dashboard-notdriver-card h3,
+.dashboard-loyaltypoints-card h3,
+.dashboard-notrider-card h3,
+.dashboard-quickaction-card h3,
+.dashboard-ridehistory-card h3,
+.dashboard-activebooks-card h3,
+.dashboard-activity-card h3 {
+  margin-top: 0;
+  color: #2c3e50;
+}
+
+.dashboard-profile-card p,
+.dashboard-notdriver-card p,
+.dashboard-loyaltypoints-card p,
+.dashboard-notrider-card p,
+.dashboard-quickaction-card p,
+.dashboard-ridehistory-card p,
+.dashboard-activebooks-card p,
+.dashboard-activity-card p {
+  color: #555;
+  font-size: 0.9rem;
+}
+
+/* Loyalty points number */
+.points-number {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #27ae60;
+}
+
+/* Quick action buttons */
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.btn {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  color: #fff;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.btn-primary { background-color: #3498db; }
+.btn-secondary { background-color: #9b59b6; }
+.btn-success { background-color: #2ecc71; }
+.btn-warning { background-color: #f39c12; }
+
+.btn:hover {
+  opacity: 0.9;
+  transform: scale(1.02);
+}
+
+/*.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}*/
+.dashboard-booking-card {
+  position: fixed;
+  bottom: 30px;                /* distance from bottom of screen */
+  left: calc(50% + 120px);     /* shift right by half the sidebar width */
+  transform: translateX(-50%); /* center horizontally */
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 1.5rem 2rem;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  width: clamp(320px, 50%, 600px);
+  z-index: 800;   
+}
+.dashboard-driver-card {
+  position: fixed;
+  bottom: 30px;                /* distance from bottom of screen */
+  left: calc(50% + 120px);     /* shift right by half the sidebar width */
+  transform: translateX(-50%); /* center horizontally */
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 1.5rem 2rem;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  width: clamp(320px, 50%, 600px);
+  z-index: 800;   
+}
+.profile-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+.info-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #eee;
+}
+.info-label {
+  font-weight: bold;
+  color: #555;
+}
+.loyalty-points {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1rem;
+  border-radius: 8px;
+  text-align: center;
+  margin: 1rem 0;
+}
+.points-number {
+  font-size: 2rem;
+  font-weight: bold;
+}
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+.btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
+  flex: 1;
+  min-width: 150px;
+}
+.btn-primary {
+  background-color: #007bff;
+  color: white;
+}
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+}
+.btn-success {
+  background-color: #28a745;
+  color: white;
+}
+.btn-warning {
+  background-color: #ffc107;
+  color: #212529;
+}
+.logout-btn {
+  float: right;
+  background-color: #dc3545;
+  color: white;
+  padding: 0.5rem 1rem;
+  text-decoration: none;
+  border-radius: 4px;
+}
+.booking-form {
+  background:#0e1a36;
+  color:#e6eefc;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,0.08);
+  box-shadow:0 20px 60px rgba(0,0,0,0.45);
+  padding:28px 28px 22px;
+  margin-top: 1rem;
+}
+.form-group {
+  margin-bottom: 1rem;
+}
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+}
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
