@@ -35,7 +35,7 @@ class CustomerForm(UserCreationForm):
         required=True,
         help_text="Format: 09XXXXXXXXX",
         widget=forms.TextInput(attrs={
-            'pattern': r'^09\\d{9}$',
+            'pattern': r'^09\d{9}$',
             'inputmode': 'numeric',
             'maxlength': '11',
             'placeholder': 'Phone number (09XXXXXXXXX)'
@@ -78,7 +78,7 @@ class DriverRegistrationForm(UserCreationForm):
         required=True,
         help_text="Format: 09XXXXXXXXX",
         widget=forms.TextInput(attrs={
-            'pattern': r'^09\\d{9}$',
+            'pattern': r'^09\d{9}$',
             'inputmode': 'numeric',
             'maxlength': '11',
             'placeholder': 'Phone number (09XXXXXXXXX)'
@@ -88,7 +88,7 @@ class DriverRegistrationForm(UserCreationForm):
         max_length=11,
         required=True,
         widget=forms.TextInput(attrs={
-            'pattern': r'^\\d{11}$',
+            'pattern': r'^\d{11}$',
             'inputmode': 'numeric',
             'maxlength': '11',
             'placeholder': "Driver's License Number"
@@ -98,7 +98,7 @@ class DriverRegistrationForm(UserCreationForm):
         required=True,
         help_text="URL to your driver's license image (.jpg/.jpeg/.png)",
         widget=forms.URLInput(attrs={
-            'pattern': r'^https?://.+\\.(jpg|jpeg|png)$',
+            'pattern': r'^https?://.+\.(jpg|jpeg|png)$',
             'placeholder': 'License Image URL'
         })
     )
@@ -161,7 +161,7 @@ class RiderRegistrationForm(UserCreationForm):
         required=True,
         help_text="Format: 09XXXXXXXXX",
         widget=forms.TextInput(attrs={
-            'pattern': r'^09\\d{9}$',
+            'pattern': r'^09\d{9}$',
             'inputmode': 'numeric',
             'maxlength': '11',
             'placeholder': 'Phone number (09XXXXXXXXX)'

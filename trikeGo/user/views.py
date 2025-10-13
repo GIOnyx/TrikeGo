@@ -1,27 +1,23 @@
+# In trikeGo/user/views.py
+
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login
 from django.contrib import messages
 from django.views import View
-from .forms import DriverRegistrationForm, RiderRegistrationForm, LoginForm, DriverVerificationForm 
+from .forms import DriverRegistrationForm, RiderRegistrationForm, LoginForm, DriverVerificationForm
 from .models import Driver, Rider, CustomUser
-
+from booking.forms import BookingForm # Import the booking form
 from datetime import date
-
-
 
 class LandingPage(View):
     template_name = 'TrikeGo_app/landingPage.html'
     def get(self, request):
-        # Create an instance of the login form and pass it to the template
         form = LoginForm()
         return render(request, self.template_name, {'form': form})
 
-from .forms import DriverRegistrationForm, RiderRegistrationForm, LoginForm # Add LoginForm
-from django.contrib.auth import login, authenticate
-
 class Login(View):
     template_name = 'TrikeGo_app/landingPage.html'
-    
+
     def post(self, request):
         form = LoginForm(request, data=request.POST)
         if form.is_valid():
@@ -30,22 +26,22 @@ class Login(View):
             user = authenticate(username=username, password=password)
             if user is not None:
                 login(request, user)
-                if user.trikeGo_user == 'D':
+                # --- CORRECTED HERE ---
+                if user.trikego_user == 'D':
                     return redirect('user:driver_dashboard')
-                elif user.trikeGo_user == 'R':
+                # --- AND HERE ---
+                elif user.trikego_user == 'R':
                     return redirect('user:rider_dashboard')
-                elif user.trikeGo_user == 'A':
+                # --- AND HERE ---
+                elif user.trikego_user == 'A':
                     return redirect('user:admin_dashboard')
                 return redirect('user:logged_in')
-        
+
         messages.error(request, "Invalid username or password.")
-        # Redirect back to the landing page with the modal open
         return redirect('/#login')
 
     def get(self, request):
-        # This view only handles POST requests for login
         return redirect('user:landing')
-
 
 class RegisterPage(View):
     template_name = 'TrikeGo_app/register.html'
@@ -58,7 +54,7 @@ class RegisterPage(View):
     def post(self, request):
         user_type = request.POST.get('user_type', 'rider')
         form = DriverRegistrationForm(request.POST) if user_type == 'driver' else RiderRegistrationForm(request.POST)
-        
+
         if form.is_valid():
             user = form.save(commit=False)
             user.trikego_user = 'D' if user_type == 'driver' else 'R'
@@ -78,7 +74,7 @@ class RegisterPage(View):
 
             messages.success(request, f"{user_type.capitalize()} registration successful! Please log in.")
             return redirect('user:landing')
-        
+
         return render(request, self.template_name, {'form': form, 'user_type': user_type})
 
 
@@ -87,29 +83,36 @@ class LoggedIn(View):
     def get(self, request):
         return render(request, self.template_name) if request.user.is_authenticated else redirect('user:landing')
 
-
 class DriverDashboard(View):
     template_name = 'TrikeGo_app/driver_dashboard.html'
     def get(self, request):
+        # --- CORRECTED HERE ---
         if not request.user.is_authenticated or request.user.trikego_user != 'D':
             return redirect('user:landing')
         profile = Driver.objects.filter(user=request.user).first()
         return render(request, self.template_name, {'user': request.user, 'driver_profile': profile})
 
-
 class RiderDashboard(View):
     template_name = 'TrikeGo_app/rider_dashboard.html'
     def get(self, request):
+        # --- THIS IS WHERE YOUR ERROR OCCURRED, NOW CORRECTED ---
         if not request.user.is_authenticated or request.user.trikego_user != 'R':
             return redirect('user:landing')
-        profile = Rider.objects.filter(user=request.user).first()
-        return render(request, self.template_name, {'user': request.user, 'rider_profile': profile})
 
+        profile = Rider.objects.filter(user=request.user).first()
+        booking_form = BookingForm()
+        context = {
+            'user': request.user,
+            'rider_profile': profile,
+            'booking_form': booking_form
+        }
+        return render(request, self.template_name, context)
 
 class AdminDashboard(View):
     template_name = 'TrikeGo_app/admin_dashboard.html'
 
     def get(self, request):
+        # --- CORRECTED HERE ---
         if not request.user.is_authenticated or getattr(request.user, 'trikego_user', None) != 'A':
             return redirect('user:landing')
 
@@ -122,6 +125,7 @@ class AdminDashboard(View):
         return render(request, self.template_name, context)
 
     def post(self, request):
+        # --- CORRECTED HERE ---
         if not request.user.is_authenticated or getattr(request.user, 'trikego_user', None) != 'A':
             return redirect('user:landing')
 
@@ -134,7 +138,6 @@ class AdminDashboard(View):
             driver.save(update_fields=["is_verified"])
             messages.success(request, f"Driver {driver.user.username}'s verification status has been updated.")
         else:
-            # Add form errors to the messages framework to be displayed in the template
             for field, errors in form.errors.items():
                 for error in errors:
                     messages.error(request, f"{field}: {error}")

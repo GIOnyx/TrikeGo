@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Book a Ride</title>
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&libraries=places"></script>
+    <script>
+        function initAutocomplete() {
+            var pickupInput = document.getElementById('pickup_location_input');
+            var destinationInput = document.getElementById('destination_location_input');
+
+            var pickupAutocomplete = new google.maps.places.Autocomplete(pickupInput);
+            var destinationAutocomplete = new google.maps.places.Autocomplete(destinationInput);
+
+            // You might want to capture lat/lng when a place is selected
+            // pickupAutocomplete.addListener('place_changed', function() {
+            //     var place = pickupAutocomplete.getPlace();
+            //     if (place.geometry) {
+            //         // Set hidden input fields for latitude and longitude
+            //         // document.getElementById('id_pickup_latitude').value = place.geometry.location.lat();
+            //         // document.getElementById('id_pickup_longitude').value = place.geometry.location.lng();
+            //     }
+            // });
+        }
+        window.onload = initAutocomplete;
+    </script>
+</head>
+<body>
+    <h1>Book Your Ride</h1>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Find Trike</button>
+    </form>
+</body>
+</html>
