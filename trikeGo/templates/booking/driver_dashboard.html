@@ -23,7 +23,7 @@
             <div class="dashboard-quickaction-card">
                 <h3>Quick Actions</h3>
                 <div class="action-buttons">
-                    <a href="#" class="btn btn-primary">View Bookings</a>
+                    <a href="{% url 'user:driver_active_books' %}" class="btn btn-primary">View Bookings</a>
                     <a href="#" class="btn btn-secondary">Update Profile</a>
                     {% if driver_profile and driver_profile.is_available %}
                         <a href="#" class="btn btn-danger">Go Offline</a>

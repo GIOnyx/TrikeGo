@@ -16,5 +16,9 @@ urlpatterns = [
     path('driver_dashboard/', views.DriverDashboard.as_view(), name='driver_dashboard'),
     path('trike-admin/dashboard/', views.AdminDashboard.as_view(), name='admin_dashboard'),
 
+    # Ride actions
     path('accept_ride/<int:booking_id>/', views.accept_ride, name='accept_ride'),
+    path('driver_active_books', views.DriverActiveBookings.as_view(), name='driver_active_books'),
+    path('driver/active/<int:booking_id>/cancel/', views.cancel_accepted_booking, name='cancel_accepted_booking'),
+    path('driver/active/<int:booking_id>/complete/', views.complete_booking, name='complete_booking'),
 ]
