@@ -1,6 +1,6 @@
 # booking/models.py
 from django.db import models
-from user.models import CustomUser # Assuming CustomUser is in the 'user' app
+from apps.user.models import CustomUser 
 from django.utils import timezone
 
 class Booking(models.Model):

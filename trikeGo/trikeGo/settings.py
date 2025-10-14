@@ -41,9 +41,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'TrikeGo_app',
-    'user',
-    'booking',
+    'apps.user',
+    'apps.booking',
 ]
 
 MIDDLEWARE = [

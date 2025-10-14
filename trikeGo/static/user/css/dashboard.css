@@ -9,7 +9,6 @@ body {
 }
 .header {
   background:rgba(10,16,32,0.75);
-  backdrop-filter:saturate(140%) blur(6px);
   color: white;
   padding: 1rem;
   text-align: center;
@@ -28,7 +27,6 @@ body {
   width: 240px;
   height: calc(100vh - 112px);
   background-color: rgba(10,16,32,0.75);
-  backdrop-filter:saturate(140%) blur(6px);
   display: flex;
   flex-direction: column;
   overflow-y: auto;

@@ -1,7 +1,7 @@
 # booking/forms.py
 from django import forms
 from .models import Booking
-from user.models import CustomUser
+from apps.user.models import CustomUser
 
 class BookingForm(forms.ModelForm):
     # We might not expose rider/driver in a simple form,

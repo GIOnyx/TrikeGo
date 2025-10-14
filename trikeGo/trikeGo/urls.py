@@ -27,6 +27,6 @@ urlpatterns = [
     path('accounts/', include('django.contrib.auth.urls')),
 
     # Your App URLs
-    path('booking/', include('booking.urls')),  # Handles all URLs starting with /booking/
-    path('', include('user.urls')),  # Handles user-related URLs like login, dashboards, etc.
+    path('booking/', include('apps.booking.urls')),  # Handles all URLs starting with /booking/
+    path('', include('apps.user.urls')),  # Handles user-related URLs like login, dashboards, etc.
 ]
