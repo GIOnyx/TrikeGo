@@ -6,9 +6,10 @@ from django.contrib import messages
 from django.views import View
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from .forms import DriverRegistrationForm, RiderRegistrationForm, LoginForm, DriverVerificationForm
 from .models import Driver, Rider, CustomUser
-from apps.booking.forms import BookingForm # Import the booking form
+from apps.booking.forms import BookingForm
 from datetime import date
 from apps.booking.models import Booking
 
@@ -29,13 +30,10 @@ class Login(View):
             user = authenticate(username=username, password=password)
             if user is not None:
                 login(request, user)
-                # --- CORRECTED HERE ---
                 if user.trikego_user == 'D':
                     return redirect('user:driver_dashboard')
-                # --- AND HERE ---
                 elif user.trikego_user == 'R':
                     return redirect('user:rider_dashboard')
-                # --- AND HERE ---
                 elif user.trikego_user == 'A':
                     return redirect('user:admin_dashboard')
                 return redirect('user:logged_in')
@@ -89,7 +87,6 @@ class LoggedIn(View):
 class DriverDashboard(View):
     template_name = 'booking/driver_dashboard.html'
     def get(self, request):
-        # --- CORRECTED HERE ---
         if not request.user.is_authenticated or request.user.trikego_user != 'D':
             return redirect('user:landing')
         profile = Driver.objects.filter(user=request.user).first()
@@ -110,15 +107,66 @@ def accept_ride(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id, status='pending', driver__isnull=True)
     booking.driver = request.user
     booking.status = 'accepted'
+    booking.start_time = timezone.now()
     booking.save()
 
     messages.success(request, f"You have accepted the ride from {booking.pickup_address} to {booking.destination_address}.")
     return redirect('user:driver_dashboard')
 
+class DriverActiveBookings(View):
+    template_name = 'booking/driver_active_books.html'
+
+    def get(self, request):
+        if not request.user.is_authenticated or request.user.trikego_user != 'D':
+            return redirect('user:landing')
+
+        active_bookings = Booking.objects.filter(
+            driver=request.user,
+            status__in=['accepted', 'on_the_way', 'started']
+        ).order_by('-booking_time')
+
+        return render(request, self.template_name, {'active_bookings': active_bookings})
+
+
+@require_POST
+def cancel_accepted_booking(request, booking_id):
+    if not request.user.is_authenticated or request.user.trikego_user != 'D':
+        return redirect('user:landing')
+
+    booking = get_object_or_404(Booking, id=booking_id, driver=request.user)
+
+    if booking.status in ['accepted', 'on_the_way', 'started']:
+        booking.status = 'pending'
+        booking.driver = None
+        booking.start_time = None
+        booking.save()
+
+        messages.success(request, "You have cancelled your acceptance. The booking is now available again.")
+    else:
+        messages.error(request, "You cannot cancel this booking anymore.")
+
+    return redirect('user:driver_active_books')
+
+
+@require_POST
+def complete_booking(request, booking_id):
+    if not request.user.is_authenticated or request.user.trikego_user != 'D':
+        return redirect('user:landing')
+
+    booking = get_object_or_404(Booking, id=booking_id, driver=request.user)
+
+    if booking.status in ['accepted', 'on_the_way', 'started']:
+        booking.status = 'completed'
+        booking.end_time = timezone.now()
+        booking.save()
+        messages.success(request, "Booking marked as completed!")
+    else:
+        messages.error(request, "Cannot complete this booking.")
+
+    return redirect('user:driver_active_books')
 class RiderDashboard(View):
     template_name = 'booking/rider_dashboard.html'
     def get(self, request):
-        # --- THIS IS WHERE YOUR ERROR OCCURRED, NOW CORRECTED ---
         if not request.user.is_authenticated or request.user.trikego_user != 'R':
             return redirect('user:landing')
 
@@ -130,7 +178,6 @@ class RiderDashboard(View):
             status__in=['pending', 'accepted', 'on_the_way', 'started']
         )
 
-        # Ride history = finished or cancelled rides
         ride_history = Booking.objects.filter(
             rider=request.user,
             status__in=['completed', 'cancelled_by_rider', 'cancelled_by_driver', 'no_driver_found']
@@ -150,7 +197,6 @@ class AdminDashboard(View):
     template_name = 'booking/admin_dashboard.html'
 
     def get(self, request):
-        # --- CORRECTED HERE ---
         if not request.user.is_authenticated or getattr(request.user, 'trikego_user', None) != 'A':
             return redirect('user:landing')
 
@@ -163,7 +209,6 @@ class AdminDashboard(View):
         return render(request, self.template_name, context)
 
     def post(self, request):
-        # --- CORRECTED HERE ---
         if not request.user.is_authenticated or getattr(request.user, 'trikego_user', None) != 'A':
             return redirect('user:landing')
 

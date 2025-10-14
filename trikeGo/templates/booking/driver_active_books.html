@@ -1,0 +1,47 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Active Bookings - TrikeGo</title>
+    <link rel="stylesheet" href="{% static 'booking/css/driver_active_books.css' %}">
+</head>
+<body>
+    <div class="header">
+        <h1>Active Bookings</h1>
+        <a href="{% url 'user:driver_dashboard' %}" class="back-btn">← Back to Dashboard</a>
+    </div>
+
+    <div class="container">
+        {% if active_bookings %}
+            <ul class="booking-list">
+                {% for booking in active_bookings %}
+                <li class="booking-card">
+                    <h3>Ride #{{ booking.id }}</h3>
+                    <p><strong>Rider:</strong> {{ booking.rider.first_name }} {{ booking.rider.last_name }}</p>
+                    <p><strong>Pickup:</strong> {{ booking.pickup_address }}</p>
+                    <p><strong>Destination:</strong> {{ booking.destination_address }}</p>
+                    <p><strong>Status:</strong> {{ booking.status|capfirst }}</p>
+                    <p><strong>Requested:</strong> {{ booking.booking_time|date:"M d, Y - H:i" }}</p>
+
+                    <div class="actions">
+                        <form method="POST" action="{% url 'user:complete_booking' booking.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-success">Complete</button>
+                        </form>
+
+                        <form method="POST" action="{% url 'user:cancel_accepted_booking' booking.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger">Cancel</button>
+                        </form>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="no-bookings">No active bookings at the moment.</p>
+        {% endif %}
+    </div>
+</body>
+</html>
