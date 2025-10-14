@@ -47,24 +47,48 @@
 
         <div class="dashboard-ridehistory-card">
             <h3>Recent Rides</h3>
-            <p>No recent rides to display.</p>
+            {% if ride_history %}
+                <ul class="ride-history-list">
+                    {% for booking in ride_history %}
+                        <li class="ride-item">
+                        From: {{ booking.pickup_address }} → {{ booking.destination_address }}<br>
+                        <small>Status: {{ booking.get_status_display }}</small><br>
+                        <small>Completed on: {{ booking.end_time|date:"M d, Y H:i" }}</small>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No rides in your history yet.</p>
+            {% endif %}
         </div>
 
         <div class="dashboard-activebooks-card">
             <h3>Active Booking</h3>
-            <p>No active booking.</p>
+            {% if active_bookings %}
+                <ul class="booking-list">
+                    {% for booking in active_bookings %}
+                        <li class="booking-item">
+                            <strong>{{ booking.pickup_address }}</strong> → {{ booking.destination_address }}<br>
+                            <small>Status: {{ booking.get_status_display }}</small><br>
+                            <small>Booked at: {{ booking.booking_time|date:"M d, Y H:i" }}</small>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No active bookings at the moment.</p>
+            {% endif %}
         </div>
     </div>
 
-    <div class="dashboard-booking-card">
-        <h3>Book a Ride</h3>
-        <form class="booking-form" method="POST" action="{% url 'booking:create_booking' %}">
-            {% csrf_token %}
+        <div class="dashboard-booking-card">
+            <h3>Book a Ride</h3>
+                <form class="booking-form" method="POST" action="{% url 'booking:create_booking' %}">
+                   {% csrf_token %}
                 
-            {{ booking_form.as_p }}
+                    {{ booking_form.as_p }}
 
-            <button type="submit" class="btn btn-primary" style="width: 100%;">Find a Trike</button>
-        </form>
-    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Find a Trike</button>
+                </form>
+        </div>
 </body>
 </html>

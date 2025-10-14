@@ -145,11 +145,6 @@ body {
   transform: scale(1.02);
 }
 
-/*.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
-}*/
 .dashboard-booking-card {
   position: fixed;
   bottom: 30px;                /* distance from bottom of screen */

@@ -35,7 +35,24 @@
 
             <div class="dashboard-activity-card">
                 <h3>Recent Activity</h3>
-                <p>No recent activity to display.</p>
+                {% if available_rides %}
+                    <p>Found {{ available_rides|length }} available rides.</p>
+                    <ul class="ride-list">
+                        {% for ride in available_rides %}
+                            <li class="ride-item">
+                                <strong>{{ ride.rider.first_name }} {{ ride.rider.last_name }}</strong><br>
+                                From: {{ ride.pickup_address }} → {{ ride.destination_address }}<br>
+                                <small>Requested: {{ ride.booking_time|date:"M d, Y H:i" }}</small><br>
+                                    <form method="POST" action="{% url 'user:accept_ride' ride.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-success">Accept Ride</button>
+                                </form>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>No rides available right now.</p>
+                {% endif %}
             </div>
         </div>
 

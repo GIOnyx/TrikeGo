@@ -4,10 +4,13 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login
 from django.contrib import messages
 from django.views import View
+from django.views.decorators.http import require_POST
+from django.shortcuts import get_object_or_404
 from .forms import DriverRegistrationForm, RiderRegistrationForm, LoginForm, DriverVerificationForm
 from .models import Driver, Rider, CustomUser
 from booking.forms import BookingForm # Import the booking form
 from datetime import date
+from booking.models import Booking
 
 class LandingPage(View):
     template_name = 'TrikeGo_app/landingPage.html'
@@ -90,7 +93,27 @@ class DriverDashboard(View):
         if not request.user.is_authenticated or request.user.trikego_user != 'D':
             return redirect('user:landing')
         profile = Driver.objects.filter(user=request.user).first()
-        return render(request, self.template_name, {'user': request.user, 'driver_profile': profile})
+        available_rides = Booking.objects.filter(status='pending', driver__isnull=True)
+
+        context = {
+            'user': request.user,
+            'driver_profile': profile,
+            'available_rides': available_rides,
+        }
+        return render(request, self.template_name, context)
+
+@require_POST
+def accept_ride(request, booking_id):
+    if not request.user.is_authenticated or request.user.trikego_user != 'D':
+        return redirect('user:landing')
+
+    booking = get_object_or_404(Booking, id=booking_id, status='pending', driver__isnull=True)
+    booking.driver = request.user
+    booking.status = 'accepted'
+    booking.save()
+
+    messages.success(request, f"You have accepted the ride from {booking.pickup_address} to {booking.destination_address}.")
+    return redirect('user:driver_dashboard')
 
 class RiderDashboard(View):
     template_name = 'TrikeGo_app/rider_dashboard.html'
@@ -101,11 +124,26 @@ class RiderDashboard(View):
 
         profile = Rider.objects.filter(user=request.user).first()
         booking_form = BookingForm()
+
+        active_bookings = Booking.objects.filter(
+            rider=request.user,
+            status__in=['pending', 'accepted', 'on_the_way', 'started']
+        )
+
+        # Ride history = finished or cancelled rides
+        ride_history = Booking.objects.filter(
+            rider=request.user,
+            status__in=['completed', 'cancelled_by_rider', 'cancelled_by_driver', 'no_driver_found']
+        ).order_by('-booking_time')
+
         context = {
             'user': request.user,
             'rider_profile': profile,
+            'active_bookings': active_bookings,
+            'ride_history': ride_history,
             'booking_form': booking_form
         }
+
         return render(request, self.template_name, context)
 
 class AdminDashboard(View):
