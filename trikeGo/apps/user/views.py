@@ -8,18 +8,18 @@ from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404
 from .forms import DriverRegistrationForm, RiderRegistrationForm, LoginForm, DriverVerificationForm
 from .models import Driver, Rider, CustomUser
-from booking.forms import BookingForm # Import the booking form
+from apps.booking.forms import BookingForm # Import the booking form
 from datetime import date
-from booking.models import Booking
+from apps.booking.models import Booking
 
 class LandingPage(View):
-    template_name = 'TrikeGo_app/landingPage.html'
+    template_name = 'user/landingPage.html'
     def get(self, request):
         form = LoginForm()
         return render(request, self.template_name, {'form': form})
 
 class Login(View):
-    template_name = 'TrikeGo_app/landingPage.html'
+    template_name = 'user/landingPage.html'
 
     def post(self, request):
         form = LoginForm(request, data=request.POST)
@@ -47,7 +47,7 @@ class Login(View):
         return redirect('user:landing')
 
 class RegisterPage(View):
-    template_name = 'TrikeGo_app/register.html'
+    template_name = 'user/register.html'
 
     def get(self, request):
         user_type = request.GET.get('type', 'rider')
@@ -82,12 +82,12 @@ class RegisterPage(View):
 
 
 class LoggedIn(View):
-    template_name = 'TrikeGo_app/tempLoggedIn.html'
+    template_name = 'user/tempLoggedIn.html'
     def get(self, request):
         return render(request, self.template_name) if request.user.is_authenticated else redirect('user:landing')
 
 class DriverDashboard(View):
-    template_name = 'TrikeGo_app/driver_dashboard.html'
+    template_name = 'booking/driver_dashboard.html'
     def get(self, request):
         # --- CORRECTED HERE ---
         if not request.user.is_authenticated or request.user.trikego_user != 'D':
@@ -116,7 +116,7 @@ def accept_ride(request, booking_id):
     return redirect('user:driver_dashboard')
 
 class RiderDashboard(View):
-    template_name = 'TrikeGo_app/rider_dashboard.html'
+    template_name = 'booking/rider_dashboard.html'
     def get(self, request):
         # --- THIS IS WHERE YOUR ERROR OCCURRED, NOW CORRECTED ---
         if not request.user.is_authenticated or request.user.trikego_user != 'R':
@@ -147,7 +147,7 @@ class RiderDashboard(View):
         return render(request, self.template_name, context)
 
 class AdminDashboard(View):
-    template_name = 'TrikeGo_app/admin_dashboard.html'
+    template_name = 'booking/admin_dashboard.html'
 
     def get(self, request):
         # --- CORRECTED HERE ---
