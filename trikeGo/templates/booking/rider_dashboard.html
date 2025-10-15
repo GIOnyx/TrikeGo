@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rider Dashboard - TrikeGo</title>
     <link rel="stylesheet" href="{% static 'user/css/dashboard.css' %}?v=2" />
+    
 </head>
 <body>
     <div class="header">
@@ -24,10 +25,10 @@
         <div class="dashboard-loyaltypoints-card">
             <div class="loyalty-points">
                 <h3>Loyalty Points</h3>
-                    <div class="points-number">{{ rider_profile.loyalty_points }}</div>
-                    <p>Earn points with every ride!</p>
-                    </div>
+                <div class="points-number">{{ rider_profile.loyalty_points }}</div>
+                <p>Earn points with every ride!</p>
             </div>
+        </div>
         {% else %}
         <div class="dashboard-notrider-card">
             <h3>Rider Profile Not Found</h3>
@@ -82,13 +83,205 @@
 
         <div class="dashboard-booking-card">
             <h3>Book a Ride</h3>
-                <form class="booking-form" method="POST" action="{% url 'booking:create_booking' %}">
-                   {% csrf_token %}
+            <form class="booking-form" method="POST" action="{% url 'user:rider_dashboard' %}">
+                {% csrf_token %}
                 
-                    {{ booking_form.as_p }}
+                {% if booking_form.non_field_errors %}
+                    <div class="form-errors">
+                        {% for error in booking_form.non_field_errors %}
+                            <p style="color: red;">{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                
+                <div class="autocomplete-container">
+                    <label for="id_pickup_address">Pickup Location:</label>
+                    {{ booking_form.pickup_address }}
+                    <div id="pickup-results" class="autocomplete-results"></div>
+                    {{ booking_form.pickup_latitude }}
+                    {{ booking_form.pickup_longitude }}
+                    {% for error in booking_form.pickup_address.errors %}
+                        <small style="color: red;">{{ error }}</small>
+                    {% endfor %}
+                </div>
 
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">Find a Trike</button>
-                </form>
+                <div class="autocomplete-container">
+                    <label for="id_destination_address">Destination:</label>
+                    {{ booking_form.destination_address }}
+                    <div id="destination-results" class="autocomplete-results"></div>
+                    {{ booking_form.destination_latitude }}
+                    {{ booking_form.destination_longitude }}
+                    {% for error in booking_form.destination_address.errors %}
+                        <small style="color: red;">{{ error }}</small>
+                    {% endfor %}
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Find a Trike</button>
+            </form>
         </div>
+    </div>
+
+    <script>
+        const GEOAPIFY_API_KEY = '08947d7bb575492ca1ed887e2f9ae2c9';
+        
+        console.log('Script loaded');
+        
+        class GeoapifyAutocomplete {
+            constructor(inputId, resultsId, latFieldId, lonFieldId) {
+                this.input = document.getElementById(inputId);
+                this.results = document.getElementById(resultsId);
+                this.latField = document.getElementById(latFieldId);
+                this.lonField = document.getElementById(lonFieldId);
+                this.timeout = null;
+                
+                console.log(`Initializing autocomplete for ${inputId}`);
+                console.log('Input element:', this.input);
+                console.log('Results element:', this.results);
+                
+                if (!this.input || !this.results || !this.latField || !this.lonField) {
+                    console.error('Required elements not found for autocomplete!');
+                    return;
+                }
+                
+                this.init();
+            }
+            
+            init() {
+                this.input.addEventListener('input', (e) => {
+                    this.handleInput(e);
+                });
+                
+                this.input.addEventListener('focus', () => {
+                    if (this.results.children.length > 0) {
+                        this.results.classList.add('active');
+                    }
+                });
+                
+                document.addEventListener('click', (e) => {
+                    if (!this.input.contains(e.target) && !this.results.contains(e.target)) {
+                        this.results.classList.remove('active');
+                    }
+                });
+                
+                console.log('Event listeners attached');
+            }
+            
+            handleInput(e) {
+                const query = e.target.value.trim();
+                
+                clearTimeout(this.timeout);
+                
+                if (query.length < 3) {
+                    this.results.innerHTML = '';
+                    this.results.classList.remove('active');
+                    return;
+                }
+                
+                console.log('Searching for:', query);
+                this.results.innerHTML = '<div class="loading">Searching...</div>';
+                this.results.classList.add('active');
+                
+                this.timeout = setTimeout(() => this.search(query), 300);
+            }
+            
+            async search(query) {
+                try {
+                    const url = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(query)}&apiKey=${GEOAPIFY_API_KEY}&bias=countrycode:ph&filter=rect:123.8,10.2,124.0,10.4&limit=5`;
+                    
+                    console.log('Fetching:', url);
+                    
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    
+                    console.log('API Response:', data);
+                    
+                    this.displayResults(data.features || []);
+                } catch (error) {
+                    console.error('Autocomplete error:', error);
+                    this.results.innerHTML = '<div class="loading">Error loading results</div>';
+                }
+            }
+            
+            displayResults(features) {
+                console.log('Displaying results:', features.length);
+                
+                if (features.length === 0) {
+                    this.results.innerHTML = '<div class="loading">No results found</div>';
+                    return;
+                }
+                
+                this.results.innerHTML = '';
+                
+                features.forEach((feature, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'autocomplete-item';
+                    
+                    const name = feature.properties.formatted || feature.properties.name || 'Unknown location';
+                    const details = [
+                        feature.properties.city,
+                        feature.properties.state,
+                        feature.properties.country
+                    ].filter(Boolean).join(', ');
+                    
+                    item.innerHTML = `
+                        <strong>${this.escapeHtml(name)}</strong>
+                        ${details ? `<small>${this.escapeHtml(details)}</small>` : ''}
+                    `;
+                    
+                    item.addEventListener('click', () => {
+                        this.selectResult(feature);
+                    });
+                    
+                    this.results.appendChild(item);
+                });
+                
+                this.results.classList.add('active');
+            }
+            
+            selectResult(feature) {
+                const address = feature.properties.formatted || feature.properties.name;
+                const lat = feature.properties.lat;
+                const lon = feature.properties.lon;
+                
+                console.log('Setting values:', { address, lat, lon });
+                
+                this.input.value = address;
+                this.latField.value = lat;
+                this.lonField.value = lon;
+                
+                console.log('Latitude field value:', this.latField.value);
+                console.log('Longitude field value:', this.lonField.value);
+
+                this.results.classList.remove('active');
+                this.results.innerHTML = '';
+            }
+            
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM Content Loaded');
+            
+            new GeoapifyAutocomplete(
+                'pickup_location_input',
+                'pickup-results',
+                'id_pickup_latitude',   
+                'id_pickup_longitude'     
+            );
+            
+            new GeoapifyAutocomplete(
+                'destination_location_input',
+                'destination-results',
+                'id_destination_latitude', 
+                'id_destination_longitude' 
+            );
+            
+            console.log('Autocomplete initialized for both fields');
+        });
+    </script>
 </body>
 </html>

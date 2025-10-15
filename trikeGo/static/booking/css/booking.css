@@ -12,3 +12,11 @@ h1 { color: #333; }
 #message { margin-top: 1rem; padding: 1rem; border-radius: 5px; display: none; }
 .msg-success { background-color: #d4edda; color: #155724; }
 .msg-error { background-color: #f8d7da; color: #721c24; }
+.label {
+display: block;
+margin-bottom: 5px;
+font-weight: 600;
+color: #333;
+font-size: 14px;
+letter-spacing: 0.3px;
+}

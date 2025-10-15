@@ -143,6 +143,86 @@ body {
   transform: scale(1.02);
 }
 
+.autocomplete-container {
+position: relative;
+margin-bottom: 1rem;
+}
+
+.autocomplete-container input[type="text"] {
+width: 100%;
+padding: 10px;
+border: 1px solid #ddd;
+border-radius: 4px;
+font-size: 14px;
+}
+
+.autocomplete-container input[type="text"]:focus {
+outline: none;
+border-color: #4CAF50;
+}
+
+.autocomplete-results {
+position: absolute;
+top: 100%;
+left: 0;
+right: 0;
+background: white;
+border: 1px solid #ddd;
+border-top: none;
+max-height: 300px;
+overflow-y: auto;
+z-index: 1000;
+box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+display: none;
+margin-top: -1px;
+}
+
+.autocomplete-results.active {
+display: block;
+}
+
+.autocomplete-item {
+padding: 12px;
+cursor: pointer;
+border-bottom: 1px solid #f0f0f0;
+transition: background-color 0.2s;
+}
+
+.autocomplete-item:hover {
+background-color: #f5f5f5;
+}
+
+.autocomplete-item:last-child {
+border-bottom: none;
+}
+
+.autocomplete-item strong {
+display: block;
+margin-bottom: 4px;
+color: #333;
+font-size: 14px;
+}
+
+.autocomplete-item small {
+color: #666;
+font-size: 12px;
+}
+
+.loading {
+padding: 12px;
+text-align: center;
+color: #666;
+font-size: 14px;
+}
+
+.booking-form label {
+display: block;
+margin-bottom: 5px;
+font-weight: 500;
+color: #333;
+}
+
+
 .dashboard-booking-card {
   position: fixed;
   bottom: 30px;                /* distance from bottom of screen */

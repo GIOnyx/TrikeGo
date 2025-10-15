@@ -55,3 +55,5 @@ def cancel_booking(request, booking_id):
     else:
         return JsonResponse({'status': 'error', 'message': 'This booking can no longer be cancelled.'}, status=400)
     
+    
+    

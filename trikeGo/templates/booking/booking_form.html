@@ -2,34 +2,48 @@
 <html>
 <head>
     <title>Book a Ride</title>
-    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&libraries=places"></script>
-    <script>
-        function initAutocomplete() {
-            var pickupInput = document.getElementById('pickup_location_input');
-            var destinationInput = document.getElementById('destination_location_input');
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@geoapify/geocoder-autocomplete@1.4.0/styles/minimal.css" />
+    <link rel="stylesheet" href="{% static 'booking/css/booking.css' %}">
 
-            var pickupAutocomplete = new google.maps.places.Autocomplete(pickupInput);
-            var destinationAutocomplete = new google.maps.places.Autocomplete(destinationInput);
-
-            // You might want to capture lat/lng when a place is selected
-            // pickupAutocomplete.addListener('place_changed', function() {
-            //     var place = pickupAutocomplete.getPlace();
-            //     if (place.geometry) {
-            //         // Set hidden input fields for latitude and longitude
-            //         // document.getElementById('id_pickup_latitude').value = place.geometry.location.lat();
-            //         // document.getElementById('id_pickup_longitude').value = place.geometry.location.lng();
-            //     }
-            // });
-        }
-        window.onload = initAutocomplete;
-    </script>
 </head>
 <body>
     <h1>Book Your Ride</h1>
     <form method="post">
         {% csrf_token %}
-        {{ form.as_p }}
+        
+        <p>
+            <label class="label" for="pickup_location_input">Pickup address:</label>
+            <div class="autocomplete-container" id="pickup-container">
+                {{ form.pickup_address }}
+            </div>
+        </p>
+
+        <p>
+            <label class="label" for="destination_location_input">Destination address:</label>
+            <div class="autocomplete-container" id="destination-container">
+                {{ form.destination_address }}
+            </div>
+        </p>
+
         <button type="submit">Find Trike</button>
     </form>
+
+    <script src="https://cdn.jsdelivr.net/npm/@geoapify/geocoder-autocomplete@1.4.0/dist/index.min.js"></script>
+
+    <script>
+        // Use the API key you generated from your Geoapify account
+        const myAPIKey = "08947d7bb575492ca1ed887e2f9ae2c9";
+
+        // Initialize autocomplete for the pickup address
+        const pickupAutocomplete = new Autocomplete(document.getElementById("pickup-container"), {
+            apiKey: myAPIKey,
+        });
+
+        // Initialize autocomplete for the destination address
+        const destinationAutocomplete = new Autocomplete(document.getElementById("destination-container"), {
+            apiKey: myAPIKey,
+        });
+    </script>
 </body>
 </html>

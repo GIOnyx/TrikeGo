@@ -164,26 +164,31 @@ def complete_booking(request, booking_id):
         messages.error(request, "Cannot complete this booking.")
 
     return redirect('user:driver_active_books')
+# In trikeGo/user/views.py
+
 class RiderDashboard(View):
     template_name = 'booking/rider_dashboard.html'
-    def get(self, request):
+
+    def get_context_data(self, request, form=None):
+        """Helper function to get all the necessary context for the template."""
         if not request.user.is_authenticated or request.user.trikego_user != 'R':
-            return redirect('user:landing')
+            return None
 
         profile = Rider.objects.filter(user=request.user).first()
-        booking_form = BookingForm()
+        
+        # Use the provided form if it's invalid, otherwise create a new one
+        booking_form = form or BookingForm()
 
         active_bookings = Booking.objects.filter(
             rider=request.user,
             status__in=['pending', 'accepted', 'on_the_way', 'started']
         )
-
         ride_history = Booking.objects.filter(
             rider=request.user,
             status__in=['completed', 'cancelled_by_rider', 'cancelled_by_driver', 'no_driver_found']
         ).order_by('-booking_time')
 
-        context = {
+        return {
             'user': request.user,
             'rider_profile': profile,
             'active_bookings': active_bookings,
@@ -191,7 +196,34 @@ class RiderDashboard(View):
             'booking_form': booking_form
         }
 
+    def get(self, request):
+        context = self.get_context_data(request)
+        if context is None:
+            return redirect('user:landing')
         return render(request, self.template_name, context)
+
+    # In trikeGo/user/views.py -> class RiderDashboard(View):
+
+    def post(self, request):
+        """Handles the booking form submission."""
+        if not request.user.is_authenticated or request.user.trikego_user != 'R':
+            return redirect('user:landing')
+        
+        form = BookingForm(request.POST)
+        
+        if form.is_valid():
+            booking = form.save(commit=False)
+            booking.rider = request.user
+            booking.save()
+            
+            messages.success(request, 'Your booking has been created successfully!')
+            return redirect('user:rider_dashboard')
+        else:
+            print("Form is NOT valid. Errors:", form.errors.as_json())
+            
+            messages.error(request, 'Please correct the errors below.')
+            context = self.get_context_data(request, form=form)
+            return render(request, self.template_name, context)
 
 class AdminDashboard(View):
     template_name = 'booking/admin_dashboard.html'
