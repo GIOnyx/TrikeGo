@@ -8,5 +8,5 @@ urlpatterns = [
     path('<int:booking_id>/', views.booking_detail, name='booking_detail'),
     path('<int:booking_id>/cancel/', views.cancel_booking, name='cancel_booking'),
     # Add other driver actions here (e.g., /start/, /complete/)
-
+    
 ]
