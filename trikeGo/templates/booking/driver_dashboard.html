@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Driver Dashboard - TrikeGo</title>
-    <link rel="stylesheet" href="{% static 'user/css/dashboard.css' %}?v=2" />
+    <link rel="stylesheet" href="{% static 'user/css/driver_dashboard.css' %}" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 </head>
 <body>
     <div class="header">
@@ -23,30 +24,41 @@
             <div class="dashboard-quickaction-card">
                 <h3>Quick Actions</h3>
                 <div class="action-buttons">
-                    <a href="{% url 'user:driver_active_books' %}" class="btn btn-primary">View Bookings</a>
+                    <a href="{% url 'user:driver_active_books' %}" class="btn btn-primary">View My Rides</a>
                     <a href="#" class="btn btn-secondary">Update Profile</a>
-                    {% if driver_profile and driver_profile.is_available %}
-                        <a href="#" class="btn btn-danger">Go Offline</a>
-                    {% else %}
-                        <a href="#" class="btn btn-success">Go Online</a>
-                    {% endif %}
                 </div>
             </div>
+            
+            {% if driver_profile %}
+            <div class="dashboard-profile-card">
+                <h3>Profile</h3>
+                <p><strong>Status:</strong> {{ driver_profile.status }}</p>
+                <p><strong>Verified:</strong> {{ driver_profile.is_verified|yesno:"Yes,No" }}</p>
+            </div>
+            {% endif %}
+        </div>
 
+        <div class="main-content">
             <div class="dashboard-activity-card">
-                <h3>Recent Activity</h3>
+                <h3>Available Rides</h3>
                 {% if available_rides %}
-                    <p>Found {{ available_rides|length }} available rides.</p>
                     <ul class="ride-list">
                         {% for ride in available_rides %}
                             <li class="ride-item">
-                                <strong>{{ ride.rider.first_name }} {{ ride.rider.last_name }}</strong><br>
-                                From: {{ ride.pickup_address }} → {{ ride.destination_address }}<br>
-                                <small>Requested: {{ ride.booking_time|date:"M d, Y H:i" }}</small><br>
-                                    <form method="POST" action="{% url 'user:accept_ride' ride.id %}">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-success">Accept Ride</button>
-                                </form>
+                                <strong>From:</strong> {{ ride.pickup_address }}<br>
+                                <strong>To:</strong> {{ ride.destination_address }}<br>
+                                <small>Requested: {{ ride.booking_time|date:"M d, Y H:i" }}</small>
+                                <div class="ride-actions">
+                                    <button class="btn btn-secondary review-ride-btn"
+                                            data-lat1="{{ ride.pickup_latitude }}"
+                                            data-lon1="{{ ride.pickup_longitude }}"
+                                            data-lat2="{{ ride.destination_latitude }}"
+                                            data-lon2="{{ ride.destination_longitude }}">Review</button>
+                                    <form method="POST" action="{% url 'user:accept_ride' ride.id %}" style="display: inline;">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-success">Accept Ride</button>
+                                    </form>
+                                </div>
                             </li>
                         {% endfor %}
                     </ul>
@@ -54,43 +66,77 @@
                     <p>No rides available right now.</p>
                 {% endif %}
             </div>
-        </div>
-
-    {% if driver_profile %}
-        <div class="dashboard-driver-card">
-            <h3>Driver Profile</h3>
-            <div class="profile-info">
-                <div class="info-item">
-                    <span class="info-label">License Number:</span>
-                    <span>{{ driver_profile.license_number }}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">License Expiry:</span>
-                    <span>{{ driver_profile.license_expiry }}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Date Hired:</span>
-                    <span>{{ driver_profile.date_hired }}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Years of Service:</span>
-                    <span>{{ driver_profile.years_of_service }}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Status:</span>
-                    <span class="status-badge {% if driver_profile.is_available %}status-available{% else %}status-busy{% endif %}">
-                        {% if driver_profile.is_available %}Available{% else %}Busy{% endif %}
-                    </span>
-                </div>
+            
+            <div class="dashboard-section">
+                <h2>Ride Preview</h2>
+                <div id="map-container"></div>
+                <div id="route-details">Click 'Review' on a ride to see the route details here.</div>
             </div>
         </div>
-        {% else %}
-        <div class="dashboard-notdriver-card">
-            <h3>Driver Profile Not Found</h3>
-            <p>Your driver profile is not set up yet. Please contact support.</p>
-        </div>
-        {% endif %}
-
     </div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const GEOAPIFY_API_KEY = '08947d7bb575492ca1ed887e2f9ae2c9';
+
+            const map = L.map('map-container').setView([10.3157, 123.8854], 13);
+            L.tileLayer('https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey={apiKey}', {
+                attribution: 'Powered by Geoapify',
+                maxZoom: 20,
+                id: 'osm-bright',
+                apiKey: GEOAPIFY_API_KEY
+            }).addTo(map);
+
+            let routeLayer, pickupMarker, destMarker;
+            const routeDetailsContainer = document.getElementById('route-details');
+            const reviewButtons = document.querySelectorAll('.review-ride-btn');
+
+            reviewButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const lat1 = this.dataset.lat1;
+                    const lon1 = this.dataset.lon1;
+                    const lat2 = this.dataset.lat2;
+                    const lon2 = this.dataset.lon2;
+                    
+                    if (!lat1 || !lon1 || !lat2 || !lon2) {
+                        routeDetailsContainer.innerHTML = "Route information is missing for this ride.";
+                        return;
+                    }
+
+                    const url = `https://api.geoapify.com/v1/routing?waypoints=${lat1},${lon1}|${lat2},${lon2}&mode=motorcycle&apiKey=${GEOAPIFY_API_KEY}`;
+                    
+                    fetch(url).then(res => res.json()).then(result => {
+                        if (routeLayer) routeLayer.remove();
+                        if (pickupMarker) pickupMarker.remove();
+                        if (destMarker) destMarker.remove();
+
+                        const routeGeoJSON = result.features[0];
+                        routeLayer = L.geoJSON(routeGeoJSON, {
+                            style: (feature) => ({ color: '#007bff', weight: 5 })
+                        }).addTo(map);
+
+                        pickupMarker = L.marker([lat1, lon1]).addTo(map).bindPopup('Pickup');
+                        destMarker = L.marker([lat2, lon2]).addTo(map).bindPopup('Destination');
+                        
+                        map.fitBounds(routeLayer.getBounds());
+
+                        const properties = routeGeoJSON.properties;
+                        const distance = (properties.distance / 1000).toFixed(2);
+                        const time = (properties.time / 60).toFixed(0);
+                        
+                        routeDetailsContainer.innerHTML = `
+                            <p><strong>Estimated Distance:</strong> ${distance} km</p>
+                            <p><strong>Estimated Time:</strong> ${time} minutes</p>
+                        `;
+
+                    }).catch(error => {
+                        console.error("Routing API error:", error);
+                        routeDetailsContainer.innerHTML = "Could not calculate the route.";
+                    });
+                });
+            });
+        });
+    </script>
 </body>
 </html>
