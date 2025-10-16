@@ -5,10 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rider Dashboard - TrikeGo</title>
-    <link rel="stylesheet" href="{% static 'user/css/dashboard.css' %}?v=2" />
-    
+    <link rel="stylesheet" href="{% static 'user/css/dashboard.css' %}?v=4" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 </head>
 <body>
+    <div id="map"></div>
+
     <div class="header">
         <h1>Rider Dashboard</h1>
         <a href="{% url 'user:landing' %}" class="logout-btn">Logout</a>
@@ -86,34 +88,20 @@
             <form class="booking-form" method="POST" action="{% url 'user:rider_dashboard' %}">
                 {% csrf_token %}
                 
-                {% if booking_form.non_field_errors %}
-                    <div class="form-errors">
-                        {% for error in booking_form.non_field_errors %}
-                            <p style="color: red;">{{ error }}</p>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-                
                 <div class="autocomplete-container">
-                    <label for="id_pickup_address">Pickup Location:</label>
+                    <label for="pickup_location_input">Pickup Location:</label>
                     {{ booking_form.pickup_address }}
                     <div id="pickup-results" class="autocomplete-results"></div>
                     {{ booking_form.pickup_latitude }}
                     {{ booking_form.pickup_longitude }}
-                    {% for error in booking_form.pickup_address.errors %}
-                        <small style="color: red;">{{ error }}</small>
-                    {% endfor %}
                 </div>
 
                 <div class="autocomplete-container">
-                    <label for="id_destination_address">Destination:</label>
+                    <label for="destination_location_input">Destination:</label>
                     {{ booking_form.destination_address }}
                     <div id="destination-results" class="autocomplete-results"></div>
                     {{ booking_form.destination_latitude }}
                     {{ booking_form.destination_longitude }}
-                    {% for error in booking_form.destination_address.errors %}
-                        <small style="color: red;">{{ error }}</small>
-                    {% endfor %}
                 </div>
 
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Find a Trike</button>
@@ -121,25 +109,21 @@
         </div>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
         const GEOAPIFY_API_KEY = '08947d7bb575492ca1ed887e2f9ae2c9';
         
-        console.log('Script loaded');
-        
         class GeoapifyAutocomplete {
-            constructor(inputId, resultsId, latFieldId, lonFieldId) {
+            constructor(inputId, resultsId, latFieldId, lonFieldId, onSelectCallback) {
                 this.input = document.getElementById(inputId);
                 this.results = document.getElementById(resultsId);
                 this.latField = document.getElementById(latFieldId);
                 this.lonField = document.getElementById(lonFieldId);
+                this.onSelectCallback = onSelectCallback;
                 this.timeout = null;
-                
-                console.log(`Initializing autocomplete for ${inputId}`);
-                console.log('Input element:', this.input);
-                console.log('Results element:', this.results);
-                
-                if (!this.input || !this.results || !this.latField || !this.lonField) {
-                    console.error('Required elements not found for autocomplete!');
+
+                if (!this.input) {
+                    console.error(`FAILED to find element with ID: #${inputId}.`);
                     return;
                 }
                 
@@ -147,28 +131,16 @@
             }
             
             init() {
-                this.input.addEventListener('input', (e) => {
-                    this.handleInput(e);
-                });
-                
-                this.input.addEventListener('focus', () => {
-                    if (this.results.children.length > 0) {
-                        this.results.classList.add('active');
-                    }
-                });
-                
+                this.input.addEventListener('input', (e) => this.handleInput(e));
                 document.addEventListener('click', (e) => {
                     if (!this.input.contains(e.target) && !this.results.contains(e.target)) {
                         this.results.classList.remove('active');
                     }
                 });
-                
-                console.log('Event listeners attached');
             }
             
             handleInput(e) {
                 const query = e.target.value.trim();
-                
                 clearTimeout(this.timeout);
                 
                 if (query.length < 3) {
@@ -177,7 +149,6 @@
                     return;
                 }
                 
-                console.log('Searching for:', query);
                 this.results.innerHTML = '<div class="loading">Searching...</div>';
                 this.results.classList.add('active');
                 
@@ -187,100 +158,117 @@
             async search(query) {
                 try {
                     const url = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(query)}&apiKey=${GEOAPIFY_API_KEY}&bias=countrycode:ph&filter=rect:123.8,10.2,124.0,10.4&limit=5`;
-                    
-                    console.log('Fetching:', url);
-                    
                     const response = await fetch(url);
                     const data = await response.json();
-                    
-                    console.log('API Response:', data);
-                    
                     this.displayResults(data.features || []);
                 } catch (error) {
-                    console.error('Autocomplete error:', error);
+                    console.error('Autocomplete API error:', error);
                     this.results.innerHTML = '<div class="loading">Error loading results</div>';
                 }
             }
             
             displayResults(features) {
-                console.log('Displaying results:', features.length);
-                
+                this.results.innerHTML = '';
                 if (features.length === 0) {
                     this.results.innerHTML = '<div class="loading">No results found</div>';
                     return;
                 }
-                
-                this.results.innerHTML = '';
-                
-                features.forEach((feature, index) => {
+                features.forEach(feature => {
                     const item = document.createElement('div');
                     item.className = 'autocomplete-item';
-                    
-                    const name = feature.properties.formatted || feature.properties.name || 'Unknown location';
-                    const details = [
-                        feature.properties.city,
-                        feature.properties.state,
-                        feature.properties.country
-                    ].filter(Boolean).join(', ');
-                    
-                    item.innerHTML = `
-                        <strong>${this.escapeHtml(name)}</strong>
-                        ${details ? `<small>${this.escapeHtml(details)}</small>` : ''}
-                    `;
-                    
-                    item.addEventListener('click', () => {
-                        this.selectResult(feature);
-                    });
-                    
+                    const name = feature.properties.formatted;
+                    item.innerHTML = `<strong>${name}</strong>`;
+                    item.addEventListener('click', () => this.selectResult(feature));
                     this.results.appendChild(item);
                 });
-                
                 this.results.classList.add('active');
             }
             
             selectResult(feature) {
-                const address = feature.properties.formatted || feature.properties.name;
                 const lat = feature.properties.lat;
                 const lon = feature.properties.lon;
-                
-                console.log('Setting values:', { address, lat, lon });
-                
-                this.input.value = address;
+                this.input.value = feature.properties.formatted;
                 this.latField.value = lat;
                 this.lonField.value = lon;
-                
-                console.log('Latitude field value:', this.latField.value);
-                console.log('Longitude field value:', this.lonField.value);
-
                 this.results.classList.remove('active');
                 this.results.innerHTML = '';
-            }
-            
-            escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
+                
+                // --- NEW --- Call the callback to update the map
+                if (this.onSelectCallback) {
+                    this.onSelectCallback(lat, lon);
+                }
             }
         }
         
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('DOM Content Loaded');
-            
-            new GeoapifyAutocomplete(
-                'pickup_location_input',
-                'pickup-results',
-                'id_pickup_latitude',   
-                'id_pickup_longitude'     
-            );
-            
-            new GeoapifyAutocomplete(
-                'destination_location_input',
-                'destination-results',
-                'id_destination_latitude', 
-                'id_destination_longitude' 
-            );
-            
-            console.log('Autocomplete initialized for both fields');
+            const map = L.map('map').setView([10.3157, 123.8854], 13);
+            L.tileLayer('https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey={apiKey}', {
+                attribution: 'Powered by Geoapify',
+                maxZoom: 20,
+                id: 'osm-bright',
+                apiKey: GEOAPIFY_API_KEY
+            }).addTo(map);
+
+            let marker = null;
+            let activeInput = null;
+
+            const pickupInput = document.getElementById('pickup_location_input');
+            const destInput = document.getElementById('destination_location_input');
+
+            // --- NEW: Shared function to update map and marker ---
+            function updateMapAndMarker(lat, lon) {
+                map.setView([lat, lon], 16); // Center the map with a closer zoom
+                if (marker) {
+                    marker.setLatLng([lat, lon]);
+                } else {
+                    marker = L.marker([lat, lon]).addTo(map);
+                }
+            }
+
+            // Initialize autocompletes, passing the update function
+            new GeoapifyAutocomplete('pickup_location_input', 'pickup-results', 'id_pickup_latitude', 'id_pickup_longitude', updateMapAndMarker);
+            new GeoapifyAutocomplete('destination_location_input', 'destination-results', 'id_destination_latitude', 'id_destination_longitude', updateMapAndMarker);
+
+            // Track which input field is active
+            pickupInput.addEventListener('focus', () => activeInput = 'pickup');
+            destInput.addEventListener('focus', () => activeInput = 'destination');
+
+            // Handle map clicks
+            map.on('click', async (e) => {
+                if (!activeInput) {
+                    console.log("Please select a field first (pickup or destination).");
+                    return;
+                }
+
+                const { lat, lng } = e.latlng;
+                
+                // Use the shared function
+                updateMapAndMarker(lat, lng);
+
+                // Reverse geocode to get the address
+                try {
+                    const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&apiKey=${GEOAPIFY_API_KEY}`;
+                    const response = await fetch(url);
+                    const data = await response.json();
+
+                    if (data.features?.length > 0) {
+                        const address = data.features[0].properties.formatted;
+                        if (activeInput === 'pickup') {
+                            pickupInput.value = address;
+                            document.getElementById('id_pickup_latitude').value = lat;
+                            document.getElementById('id_pickup_longitude').value = lng;
+                        } else if (activeInput === 'destination') {
+                            destInput.value = address;
+                            document.getElementById('id_destination_latitude').value = lat;
+                            document.getElementById('id_destination_longitude').value = lng;
+                        }
+                    } else {
+                        console.log("Could not find address for this location.");
+                    }
+                } catch (error) {
+                    console.error("Reverse geocoding error:", error);
+                }
+            });
         });
     </script>
 </body>
