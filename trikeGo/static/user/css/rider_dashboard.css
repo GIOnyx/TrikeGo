@@ -1,0 +1,183 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #f4f4f4;
+  min-height:100vh;
+  position:relative;
+}
+
+#map {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+}
+
+.header {
+  background:rgba(10,16,32,0.75);
+  color: white;
+  padding: 1rem;
+  text-align: center;
+  position: relative;
+  z-index: 2;
+}
+.container {
+  display: flex;
+  margin-top: 70px; /* avoid header overlap */
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+/* Vertical sidebar card */
+.sidebar {
+  position: fixed;
+  top: 112px;
+  left: 0;
+  width: 240px;
+  height: calc(100vh - 112px);
+  background-color: rgba(10,16,32,0.75);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
+  padding: 1rem;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background-color: rgba(29, 46, 94, 0.75);
+  border-radius: 4px;
+}
+
+.sidebar h2 {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  color: #34495e;
+}
+
+/* Each dashboard card inside the sidebar */
+.dashboard-profile-card,
+.dashboard-loyaltypoints-card,
+.dashboard-quickaction-card,
+.dashboard-ridehistory-card,
+.dashboard-activebooks-card {
+  background-color: #f9fafc;
+  border: 1px solid #e1e4e8;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.dashboard-profile-card h2,
+.dashboard-loyaltypoints-card h3,
+.dashboard-quickaction-card h3,
+.dashboard-ridehistory-card h3,
+.dashboard-activebooks-card h3 {
+  margin-top: 0;
+  color: #2c3e50;
+}
+
+.points-number {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #27ae60;
+}
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.btn {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  color: #fff;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.btn-primary { background-color: #3498db; }
+.btn-secondary { background-color: #9b59b6; }
+.btn-success { background-color: #2ecc71; }
+.btn-warning { background-color: #f39c12; }
+
+
+.autocomplete-container {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.autocomplete-container input[type="text"] {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.autocomplete-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-top: none;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  display: none;
+  margin-top: -1px;
+}
+
+.autocomplete-results.active {
+  display: block;
+}
+
+.autocomplete-item {
+  padding: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.dashboard-booking-card {
+  position: fixed;
+  bottom: 30px;
+  left: calc(50% + 120px);
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 1.5rem 2rem;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  width: clamp(320px, 50%, 600px);
+  z-index: 800;   
+}
+
+.logout-btn {
+  float: right;
+  background-color: #dc3545;
+  color: white;
+  padding: 0.5rem 1rem;
+  text-decoration: none;
+  border-radius: 4px;
+}
+.booking-form {
+  background:#0e1a36;
+  color:#e6eefc;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,0.08);
+  box-shadow:0 20px 60px rgba(0,0,0,0.45);
+  padding:28px 28px 22px;
+  margin-top: 1rem;
+}
