@@ -12,6 +12,11 @@ from .models import Driver, Rider, CustomUser
 from apps.booking.forms import BookingForm
 from datetime import date
 from apps.booking.models import Booking
+import json
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import csrf_exempt
+
 
 class LandingPage(View):
     template_name = 'user/landingPage.html'
@@ -164,21 +169,16 @@ def complete_booking(request, booking_id):
         messages.error(request, "Cannot complete this booking.")
 
     return redirect('user:driver_active_books')
-# In trikeGo/user/views.py
 
 class RiderDashboard(View):
     template_name = 'booking/rider_dashboard.html'
 
     def get_context_data(self, request, form=None):
-        """Helper function to get all the necessary context for the template."""
         if not request.user.is_authenticated or request.user.trikego_user != 'R':
             return None
 
         profile = Rider.objects.filter(user=request.user).first()
-        
-        # Use the provided form if it's invalid, otherwise create a new one
         booking_form = form or BookingForm()
-
         active_bookings = Booking.objects.filter(
             rider=request.user,
             status__in=['pending', 'accepted', 'on_the_way', 'started']
@@ -202,10 +202,7 @@ class RiderDashboard(View):
             return redirect('user:landing')
         return render(request, self.template_name, context)
 
-    # In trikeGo/user/views.py -> class RiderDashboard(View):
-
     def post(self, request):
-        """Handles the booking form submission."""
         if not request.user.is_authenticated or request.user.trikego_user != 'R':
             return redirect('user:landing')
         
@@ -219,14 +216,12 @@ class RiderDashboard(View):
             messages.success(request, 'Your booking has been created successfully!')
             return redirect('user:rider_dashboard')
         else:
-            print("Form is NOT valid. Errors:", form.errors.as_json())
-            
             messages.error(request, 'Please correct the errors below.')
             context = self.get_context_data(request, form=form)
             return render(request, self.template_name, context)
 
 class AdminDashboard(View):
-    template_name = 'booking/admin_dashboard.html'
+    template_name = 'user/admin_dashboard.html'
 
     def get(self, request):
         if not request.user.is_authenticated or getattr(request.user, 'trikego_user', None) != 'A':
@@ -258,3 +253,79 @@ class AdminDashboard(View):
                     messages.error(request, f"{field}: {error}")
 
         return redirect('user:admin_dashboard')
+
+# --- REAL-TIME TRACKING VIEWS ---
+
+@csrf_exempt
+@login_required
+@require_POST
+def update_driver_location(request):
+    if request.user.trikego_user != 'D':
+        return JsonResponse({'status': 'error', 'message': 'Only drivers can update location.'}, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        lat, lon = data.get('lat'), data.get('lon')
+        if lat is None or lon is None:
+            return JsonResponse({'status': 'error', 'message': 'Missing lat/lon.'}, status=400)
+        Driver.objects.filter(user=request.user).update(current_latitude=lat, current_longitude=lon)
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+@login_required
+def get_driver_location(request, booking_id):
+    booking = get_object_or_404(Booking, id=booking_id)
+    if request.user != booking.rider:
+        return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
+    if not booking.driver:
+        return JsonResponse({'status': 'error', 'message': 'No driver assigned yet.'}, status=404)
+    try:
+        driver_profile = Driver.objects.get(user=booking.driver)
+        return JsonResponse({'status': 'success', 'lat': driver_profile.current_latitude, 'lon': driver_profile.current_longitude})
+    except Driver.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Driver profile not found.'}, status=404)
+
+# --- NEW: VIEWS FOR RIDER LOCATION AND DRIVER MAP ---
+@csrf_exempt
+@login_required
+@require_POST
+def update_rider_location(request):
+    if request.user.trikego_user != 'R':
+        return JsonResponse({'status': 'error', 'message': 'Only riders can update location.'}, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        lat, lon = data.get('lat'), data.get('lon')
+        if lat is None or lon is None:
+            return JsonResponse({'status': 'error', 'message': 'Missing lat/lon.'}, status=400)
+        Rider.objects.filter(user=request.user).update(current_latitude=lat, current_longitude=lon)
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+@login_required
+def get_route_info(request, booking_id):
+    booking = get_object_or_404(Booking, id=booking_id)
+    # --- FIXED: Changed permission check to allow any driver to review ---
+    if not request.user.is_authenticated or request.user.trikego_user != 'D':
+        return JsonResponse({'status': 'error', 'message': 'Only drivers can view route info.'}, status=403)
+    
+    try:
+        driver_profile = Driver.objects.get(user=request.user) # Use request.user to get current driver
+        rider_profile = Rider.objects.get(user=booking.rider)
+        
+        return JsonResponse({
+            'status': 'success',
+            'driver_lat': driver_profile.current_latitude,
+            'driver_lon': driver_profile.current_longitude,
+            'rider_lat': rider_profile.current_latitude,
+            'rider_lon': rider_profile.current_longitude,
+            'pickup_lat': booking.pickup_latitude,
+            'pickup_lon': booking.pickup_longitude,
+            'destination_lat': booking.destination_latitude,
+            'destination_lon': booking.destination_longitude,
+        })
+    except (Driver.DoesNotExist, Rider.DoesNotExist):
+        return JsonResponse({'status': 'error', 'message': 'Profile not found for driver or rider.'}, status=404)
+

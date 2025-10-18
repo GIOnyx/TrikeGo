@@ -33,7 +33,13 @@ class Driver(models.Model):
     )
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Offline')
     is_verified = models.BooleanField(default=False)
+    current_latitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)
+    current_longitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)
 
 class Rider(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, null=True, blank=True)
     loyalty_points = models.IntegerField(default=0)
+    # --- NEW FIELDS FOR RIDER TRACKING ---
+    current_latitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)
+    current_longitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)
+

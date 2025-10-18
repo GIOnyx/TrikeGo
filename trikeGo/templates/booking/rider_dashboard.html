@@ -70,7 +70,7 @@
             {% if active_bookings %}
                 <ul class="booking-list">
                     {% for booking in active_bookings %}
-                        <li class="booking-item">
+                        <li class="booking-item" data-booking-id="{{ booking.id }}"> <!-- Add booking ID -->
                             <strong>{{ booking.pickup_address }}</strong> → {{ booking.destination_address }}<br>
                             <small>Status: {{ booking.get_status_display }}</small><br>
                             <small>Booked at: {{ booking.booking_time|date:"M d, Y H:i" }}</small>
@@ -157,7 +157,7 @@
             
             async search(query) {
                 try {
-                    const url = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(query)}&apiKey=${GEOAPIFY_API_KEY}&bias=countrycode:ph&filter=rect:123.8,10.2,124.0,10.4&limit=5`;
+                    const url = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(query)}&apiKey=${GEOAPIFY_API_KEY}&bias=countrycode:ph|proximity:123.8854,10.3157&limit=5`;
                     const response = await fetch(url);
                     const data = await response.json();
                     this.displayResults(data.features || []);
@@ -193,7 +193,6 @@
                 this.results.classList.remove('active');
                 this.results.innerHTML = '';
                 
-                // --- NEW --- Call the callback to update the map
                 if (this.onSelectCallback) {
                     this.onSelectCallback(lat, lon);
                 }
@@ -215,9 +214,8 @@
             const pickupInput = document.getElementById('pickup_location_input');
             const destInput = document.getElementById('destination_location_input');
 
-            // --- NEW: Shared function to update map and marker ---
             function updateMapAndMarker(lat, lon) {
-                map.setView([lat, lon], 16); // Center the map with a closer zoom
+                map.setView([lat, lon], 16);
                 if (marker) {
                     marker.setLatLng([lat, lon]);
                 } else {
@@ -225,15 +223,12 @@
                 }
             }
 
-            // Initialize autocompletes, passing the update function
             new GeoapifyAutocomplete('pickup_location_input', 'pickup-results', 'id_pickup_latitude', 'id_pickup_longitude', updateMapAndMarker);
             new GeoapifyAutocomplete('destination_location_input', 'destination-results', 'id_destination_latitude', 'id_destination_longitude', updateMapAndMarker);
 
-            // Track which input field is active
             pickupInput.addEventListener('focus', () => activeInput = 'pickup');
             destInput.addEventListener('focus', () => activeInput = 'destination');
 
-            // Handle map clicks
             map.on('click', async (e) => {
                 if (!activeInput) {
                     console.log("Please select a field first (pickup or destination).");
@@ -242,10 +237,8 @@
 
                 const { lat, lng } = e.latlng;
                 
-                // Use the shared function
                 updateMapAndMarker(lat, lng);
 
-                // Reverse geocode to get the address
                 try {
                     const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&apiKey=${GEOAPIFY_API_KEY}`;
                     const response = await fetch(url);
@@ -269,6 +262,46 @@
                     console.error("Reverse geocoding error:", error);
                 }
             });
+
+            // --- NEW: REAL-TIME TRACKING LOGIC ---
+            const activeBookingElement = document.querySelector('.booking-item[data-booking-id]');
+            let driverMarker = null;
+
+            if (activeBookingElement) {
+                const bookingId = activeBookingElement.dataset.bookingId;
+                
+                // Poll every 5 seconds
+                setInterval(() => fetchDriverLocation(bookingId), 5000);
+                // Fetch immediately on page load as well
+                fetchDriverLocation(bookingId);
+            }
+
+            async function fetchDriverLocation(bookingId) {
+                try {
+                    const response = await fetch(`/api/booking/${bookingId}/driver_location/`);
+                    const data = await response.json();
+
+                    if (data.status === 'success' && data.lat && data.lon) {
+                        const latLng = [data.lat, data.lon];
+                        console.log("Driver location received:", latLng);
+                        
+                        if (!driverMarker) {
+                             // You can use a custom icon for the trike
+                            driverMarker = L.marker(latLng).addTo(map)
+                                .bindPopup('Your driver is here!')
+                                .openPopup();
+                        } else {
+                            driverMarker.setLatLng(latLng);
+                        }
+                        // Optional: Center map on driver
+                        // map.panTo(latLng); 
+                    } else {
+                        console.warn("Could not fetch driver location:", data.message);
+                    }
+                } catch (error) {
+                    console.error("Error fetching driver location:", error);
+                }
+            }
         });
     </script>
 </body>
