@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rider Dashboard - TrikeGo</title>
-    <link rel="stylesheet" href="{% static 'user/css/rider_dashboard.css' %}?v=4" />
+    <link rel="stylesheet" href="{% static 'user/css/rider_dashboard.css' %}?v=5" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 </head>
 <body>
@@ -23,65 +23,60 @@
                 <p>Rider ID: {{ user.username }}</p>
             </div>
 
-        {% if rider_profile %}
-        <div class="dashboard-loyaltypoints-card">
-            <div class="loyalty-points">
-                <h3>Loyalty Points</h3>
-                <div class="points-number">{{ rider_profile.loyalty_points }}</div>
-                <p>Earn points with every ride!</p>
+            {% if rider_profile %}
+            <div class="dashboard-loyaltypoints-card">
+                <div class="loyalty-points">
+                    <h3>Loyalty Points</h3>
+                    <div class="points-number">{{ rider_profile.loyalty_points }}</div>
+                    <p>Earn points with every ride!</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Real-time tracking info -->
+            <div class="dashboard-tracking-card" id="tracking-info" style="display:none;">
+                <h3>Live Tracking</h3>
+                <div id="driver-eta">
+                    <p><strong>Driver ETA:</strong> <span id="eta-value">Calculating...</span></p>
+                    <p><strong>Distance:</strong> <span id="distance-value">--</span></p>
+                    <p><strong>Last Updated:</strong> <span id="last-update">--</span></p>
+                </div>
+                <div class="tracking-status">
+                    <div class="status-indicator" id="status-indicator"></div>
+                    <span id="tracking-status-text">Driver is on the way</span>
+                </div>
+            </div>
+
+            <div class="dashboard-activebooks-card">
+                <h3>Active Booking</h3>
+                {% if active_bookings %}
+                    <ul class="booking-list">
+                        {% for booking in active_bookings %}
+                            <li class="booking-item" data-booking-id="{{ booking.id }}">
+                                <strong>{{ booking.pickup_address }}</strong> → {{ booking.destination_address }}<br>
+                                <small>Status: <span class="booking-status">{{ booking.get_status_display }}</span></small><br>
+                                <small>Booked at: {{ booking.booking_time|date:"M d, Y H:i" }}</small>
+                                {% if booking.estimated_arrival %}
+                                <br><small>Est. Arrival: {{ booking.estimated_arrival|date:"H:i" }}</small>
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>No active bookings at the moment.</p>
+                {% endif %}
+            </div>
+
+            <div class="dashboard-quickaction-card">
+                <h3>Quick Actions</h3>
+                <div class="action-buttons">
+                    <a href="#" class="btn btn-primary">Book Ride</a>
+                    <a href="#" class="btn btn-secondary">Ride History</a>
+                    <a href="#" class="btn btn-success">Payment Methods</a>
+                    <a href="#" class="btn btn-warning">Support</a>
+                </div>
             </div>
         </div>
-        {% else %}
-        <div class="dashboard-notrider-card">
-            <h3>Rider Profile Not Found</h3>
-            <p>Your rider profile is not set up yet. Please contact support.</p>
-        </div>
-        {% endif %}
-
-        <div class="dashboard-quickaction-card">
-            <h3>Quick Actions</h3>
-            <div class="action-buttons">
-                <a href="#" class="btn btn-primary">Book Ride</a>
-                <a href="#" class="btn btn-secondary">Ride History</a>
-                <a href="#" class="btn btn-success">Payment Methods</a>
-                <a href="#" class="btn btn-warning">Support</a>
-            </div>
-        </div>
-
-        <div class="dashboard-ridehistory-card">
-            <h3>Recent Rides</h3>
-            {% if ride_history %}
-                <ul class="ride-history-list">
-                    {% for booking in ride_history %}
-                        <li class="ride-item">
-                        From: {{ booking.pickup_address }} → {{ booking.destination_address }}<br>
-                        <small>Status: {{ booking.get_status_display }}</small><br>
-                        <small>Completed on: {{ booking.end_time|date:"M d, Y H:i" }}</small>
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <p>No rides in your history yet.</p>
-            {% endif %}
-        </div>
-
-        <div class="dashboard-activebooks-card">
-            <h3>Active Booking</h3>
-            {% if active_bookings %}
-                <ul class="booking-list">
-                    {% for booking in active_bookings %}
-                        <li class="booking-item">
-                            <strong>{{ booking.pickup_address }}</strong> → {{ booking.destination_address }}<br>
-                            <small>Status: {{ booking.get_status_display }}</small><br>
-                            <small>Booked at: {{ booking.booking_time|date:"M d, Y H:i" }}</small>
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <p>No active bookings at the moment.</p>
-            {% endif %}
-        </div>
-    </div>
 
         <div class="dashboard-booking-card">
             <h3>Book a Ride</h3>
@@ -112,6 +107,13 @@
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
         const GEOAPIFY_API_KEY = '08947d7bb575492ca1ed887e2f9ae2c9';
+        
+        // Real-time tracking variables
+        let trackingInterval = null;
+        let driverMarker = null;
+        let routeLayer = null;
+        let pickupMarker = null;
+        let destinationMarker = null;
         
         class GeoapifyAutocomplete {
             constructor(inputId, resultsId, latFieldId, lonFieldId, onSelectCallback) {
@@ -193,7 +195,6 @@
                 this.results.classList.remove('active');
                 this.results.innerHTML = '';
                 
-                // --- NEW --- Call the callback to update the map
                 if (this.onSelectCallback) {
                     this.onSelectCallback(lat, lon);
                 }
@@ -202,11 +203,9 @@
         
         document.addEventListener('DOMContentLoaded', () => {
             const map = L.map('map').setView([10.3157, 123.8854], 13);
-            L.tileLayer('https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey={apiKey}', {
-                attribution: 'Powered by Geoapify',
-                maxZoom: 20,
-                id: 'osm-bright',
-                apiKey: GEOAPIFY_API_KEY
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
             }).addTo(map);
 
             let marker = null;
@@ -215,9 +214,8 @@
             const pickupInput = document.getElementById('pickup_location_input');
             const destInput = document.getElementById('destination_location_input');
 
-            // --- NEW: Shared function to update map and marker ---
             function updateMapAndMarker(lat, lon) {
-                map.setView([lat, lon], 16); // Center the map with a closer zoom
+                map.setView([lat, lon], 16);
                 if (marker) {
                     marker.setLatLng([lat, lon]);
                 } else {
@@ -225,27 +223,18 @@
                 }
             }
 
-            // Initialize autocompletes, passing the update function
             new GeoapifyAutocomplete('pickup_location_input', 'pickup-results', 'id_pickup_latitude', 'id_pickup_longitude', updateMapAndMarker);
             new GeoapifyAutocomplete('destination_location_input', 'destination-results', 'id_destination_latitude', 'id_destination_longitude', updateMapAndMarker);
 
-            // Track which input field is active
             pickupInput.addEventListener('focus', () => activeInput = 'pickup');
             destInput.addEventListener('focus', () => activeInput = 'destination');
 
-            // Handle map clicks
             map.on('click', async (e) => {
-                if (!activeInput) {
-                    console.log("Please select a field first (pickup or destination).");
-                    return;
-                }
+                if (!activeInput) return;
 
                 const { lat, lng } = e.latlng;
-                
-                // Use the shared function
                 updateMapAndMarker(lat, lng);
 
-                // Reverse geocode to get the address
                 try {
                     const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&apiKey=${GEOAPIFY_API_KEY}`;
                     const response = await fetch(url);
@@ -262,14 +251,153 @@
                             document.getElementById('id_destination_latitude').value = lat;
                             document.getElementById('id_destination_longitude').value = lng;
                         }
-                    } else {
-                        console.log("Could not find address for this location.");
                     }
                 } catch (error) {
                     console.error("Reverse geocoding error:", error);
                 }
             });
+
+            // Real-time tracking functionality
+            const activeBookingItems = document.querySelectorAll('.booking-item');
+            if (activeBookingItems.length > 0) {
+                const firstBooking = activeBookingItems[0];
+                const bookingId = firstBooking.dataset.bookingId;
+                const bookingStatus = firstBooking.querySelector('.booking-status').textContent.trim();
+                
+                // Start tracking if driver is assigned
+                if (bookingStatus !== 'Pending Driver Assignment') {
+                    startTracking(bookingId, map);
+                }
+            }
+        });
+
+        async function startTracking(bookingId, map) {
+            document.getElementById('tracking-info').style.display = 'block';
+            
+            // Initial load
+            await updateDriverLocation(bookingId, map);
+            await updateRoute(bookingId, map);
+            
+            // Update every 5 seconds
+            trackingInterval = setInterval(async () => {
+                await updateDriverLocation(bookingId, map);
+            }, 5000);
+            
+            // Update route every 30 seconds
+            setInterval(async () => {
+                await updateRoute(bookingId, map);
+            }, 30000);
+        }
+
+        async function updateDriverLocation(bookingId, map) {
+            try {
+                const response = await fetch(`/booking/api/location/${bookingId}/`, {
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken')
+                    }
+                });
+                
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                
+                // Update driver marker
+                const driverLatLng = [data.latitude, data.longitude];
+                
+                if (!driverMarker) {
+                    const driverIcon = L.divIcon({
+                        className: 'driver-marker',
+                        html: '<div style="background: #007bff; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+                        iconSize: [30, 30]
+                    });
+                    driverMarker = L.marker(driverLatLng, { icon: driverIcon }).addTo(map);
+                    driverMarker.bindPopup('Driver Location');
+                } else {
+                    driverMarker.setLatLng(driverLatLng);
+                }
+                
+                // Update ETA display
+                if (data.eta_seconds) {
+                    const minutes = Math.ceil(data.eta_seconds / 60);
+                    document.getElementById('eta-value').textContent = `${minutes} min`;
+                }
+                
+                // Update last update time
+                const updateTime = new Date(data.timestamp);
+                document.getElementById('last-update').textContent = updateTime.toLocaleTimeString();
+                
+                // Update status indicator
+                const indicator = document.getElementById('status-indicator');
+                indicator.style.backgroundColor = '#28a745';
+                indicator.classList.add('pulse');
+                
+            } catch (error) {
+                console.error('Error updating driver location:', error);
+                document.getElementById('status-indicator').style.backgroundColor = '#dc3545';
+            }
+        }
+
+        async function updateRoute(bookingId, map) {
+            try {
+                const response = await fetch(`/booking/api/route/${bookingId}/`, {
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken')
+                    }
+                });
+                
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                
+                // Remove old route
+                if (routeLayer) {
+                    map.removeLayer(routeLayer);
+                }
+                
+                // Draw new route
+                if (data.route_data && data.route_data.features) {
+                    routeLayer = L.geoJSON(data.route_data, {
+                        style: {
+                            color: '#007bff',
+                            weight: 5,
+                            opacity: 0.7
+                        }
+                    }).addTo(map);
+                    
+                    // Fit map to show entire route
+                    map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+                }
+                
+                // Update distance
+                document.getElementById('distance-value').textContent = `${data.distance} km`;
+                
+            } catch (error) {
+                console.error('Error updating route:', error);
+            }
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (trackingInterval) {
+                clearInterval(trackingInterval);
+            }
         });
     </script>
+
 </body>
 </html>

@@ -49,11 +49,9 @@
                                 <strong>To:</strong> {{ ride.destination_address }}<br>
                                 <small>Requested: {{ ride.booking_time|date:"M d, Y H:i" }}</small>
                                 <div class="ride-actions">
-                                    <button class="btn btn-secondary review-ride-btn"
-                                            data-lat1="{{ ride.pickup_latitude }}"
-                                            data-lon1="{{ ride.pickup_longitude }}"
-                                            data-lat2="{{ ride.destination_latitude }}"
-                                            data-lon2="{{ ride.destination_longitude }}">Review</button>
+                                    <button class="btn btn-secondary review-ride-btn" data-booking-id="{{ ride.id }}">
+                                        Review
+                                    </button>
                                     <form method="POST" action="{% url 'user:accept_ride' ride.id %}" style="display: inline;">
                                         {% csrf_token %}
                                         <button type="submit" class="btn btn-success">Accept Ride</button>
@@ -88,55 +86,317 @@
                 apiKey: GEOAPIFY_API_KEY
             }).addTo(map);
 
-            let routeLayer, pickupMarker, destMarker;
+            let driverToRiderRouteLayer, riderToDestRouteLayer;
+            let riderMarker, destMarker;
             const routeDetailsContainer = document.getElementById('route-details');
             const reviewButtons = document.querySelectorAll('.review-ride-btn');
 
             reviewButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    const lat1 = this.dataset.lat1;
-                    const lon1 = this.dataset.lon1;
-                    const lat2 = this.dataset.lat2;
-                    const lon2 = this.dataset.lon2;
-                    
-                    if (!lat1 || !lon1 || !lat2 || !lon2) {
-                        routeDetailsContainer.innerHTML = "Route information is missing for this ride.";
-                        return;
-                    }
+                button.addEventListener('click', async function() {
+                    const bookingId = this.dataset.bookingId;
+                    routeDetailsContainer.innerHTML = "Fetching route information...";
 
-                    const url = `https://api.geoapify.com/v1/routing?waypoints=${lat1},${lon1}|${lat2},${lon2}&mode=motorcycle&apiKey=${GEOAPIFY_API_KEY}`;
-                    
-                    fetch(url).then(res => res.json()).then(result => {
-                        if (routeLayer) routeLayer.remove();
-                        if (pickupMarker) pickupMarker.remove();
+                    try {
+                        // 1. Get all coordinates from our backend
+                        const infoResponse = await fetch(`/api/booking/${bookingId}/route_info/`);
+                        const routeInfo = await infoResponse.json();
+
+                        if (routeInfo.status !== 'success') {
+                            throw new Error(routeInfo.message);
+                        }
+                        
+                        // Clear previous layers
+                        if (driverToRiderRouteLayer) driverToRiderRouteLayer.remove();
+                        if (riderToDestRouteLayer) riderToDestRouteLayer.remove();
+                        if (riderMarker) riderMarker.remove();
                         if (destMarker) destMarker.remove();
 
-                        const routeGeoJSON = result.features[0];
-                        routeLayer = L.geoJSON(routeGeoJSON, {
-                            style: (feature) => ({ color: '#007bff', weight: 5 })
+                        // Add markers for pickup and destination
+                        const pickupLatLng = [routeInfo.pickup_lat, routeInfo.pickup_lon];
+                        const destLatLng = [routeInfo.destination_lat, routeInfo.destination_lon];
+                        riderMarker = L.marker(pickupLatLng).addTo(map).bindPopup('Rider Pickup');
+                        destMarker = L.marker(destLatLng).addTo(map).bindPopup('Destination');
+
+                        // 2. Fetch Driver-to-Rider route
+                        const driverToRiderUrl = `https://api.geoapify.com/v1/routing?waypoints=${routeInfo.driver_lat},${routeInfo.driver_lon}|${routeInfo.pickup_lat},${routeInfo.pickup_lon}&mode=motorcycle&apiKey=${GEOAPIFY_API_KEY}`;
+                        const dtResponse = await fetch(driverToRiderUrl);
+                        const dtResult = await dtResponse.json();
+                        
+                        const dtRoute = dtResult.features[0];
+                        driverToRiderRouteLayer = L.geoJSON(dtRoute, {
+                            style: (feature) => ({ color: '#007bff', weight: 5, opacity: 0.8 })
                         }).addTo(map);
 
-                        pickupMarker = L.marker([lat1, lon1]).addTo(map).bindPopup('Pickup');
-                        destMarker = L.marker([lat2, lon2]).addTo(map).bindPopup('Destination');
+                        // 3. Fetch Rider-to-Destination route
+                        const riderToDestUrl = `https://api.geoapify.com/v1/routing?waypoints=${routeInfo.pickup_lat},${routeInfo.pickup_lon}|${routeInfo.destination_lat},${routeInfo.destination_lon}&mode=motorcycle&apiKey=${GEOAPIFY_API_KEY}`;
+                        const rdResponse = await fetch(riderToDestUrl);
+                        const rdResult = await rdResponse.json();
                         
-                        map.fitBounds(routeLayer.getBounds());
+                        const rdRoute = rdResult.features[0];
+                        riderToDestRouteLayer = L.geoJSON(rdRoute, {
+                            style: (feature) => ({ color: '#28a745', weight: 5, opacity: 0.8 })
+                        }).addTo(map);
+                        
+                        // Fit map to show both routes
+                        const fullBounds = driverToRiderRouteLayer.getBounds().extend(riderToDestRouteLayer.getBounds());
+                        map.fitBounds(fullBounds, { padding: [50, 50] });
 
-                        const properties = routeGeoJSON.properties;
-                        const distance = (properties.distance / 1000).toFixed(2);
-                        const time = (properties.time / 60).toFixed(0);
-                        
+                        // 4. Display combined details
+                        const dtProps = dtRoute.properties;
+                        const rdProps = rdRoute.properties;
+                        const totalDistance = ((dtProps.distance + rdProps.distance) / 1000).toFixed(2);
+                        const totalTime = ((dtProps.time + rdProps.time) / 60).toFixed(0);
+
                         routeDetailsContainer.innerHTML = `
-                            <p><strong>Estimated Distance:</strong> ${distance} km</p>
-                            <p><strong>Estimated Time:</strong> ${time} minutes</p>
+                            <p><strong style="color: #007bff;">To Rider:</strong> ${(dtProps.distance / 1000).toFixed(2)} km / ${(dtProps.time / 60).toFixed(0)} mins</p>
+                            <p><strong style="color: #28a745;">Trip to Destination:</strong> ${(rdProps.distance / 1000).toFixed(2)} km / ${(rdProps.time / 60).toFixed(0)} mins</p>
+                            <hr>
+                            <p><strong>Total Estimated Distance:</strong> ${totalDistance} km</p>
+                            <p><strong>Total Estimated Time:</strong> ${totalTime} minutes</p>
                         `;
 
-                    }).catch(error => {
+                    } catch (error) {
                         console.error("Routing API error:", error);
-                        routeDetailsContainer.innerHTML = "Could not calculate the route.";
-                    });
+                        routeDetailsContainer.innerHTML = `Could not calculate the route. ${error.message}`;
+                    }
                 });
             });
         });
+    </script>
+
+    <script>
+    // Driver Location Broadcasting System
+    let locationWatchId = null;
+    let isTracking = false;
+    let currentBookingId = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check if driver has active booking
+        checkActiveBooking();
+        
+        // Add manual location sharing toggle
+        addLocationToggle();
+    });
+
+    function checkActiveBooking() {
+        // Check if there's an active booking from the page
+        const activeBookingElement = document.querySelector('[data-active-booking-id]');
+        if (activeBookingElement) {
+            currentBookingId = activeBookingElement.dataset.activeBookingId;
+            startLocationTracking();
+        }
+    }
+
+    function addLocationToggle() {
+        const container = document.querySelector('.dashboard-quickaction-card .action-buttons');
+        if (!container) return;
+        
+        const toggleBtn = document.createElement('button');
+        toggleBtn.id = 'location-toggle';
+        toggleBtn.className = 'btn btn-warning';
+        toggleBtn.textContent = 'Start Location Sharing';
+        toggleBtn.onclick = toggleLocationSharing;
+        
+        container.appendChild(toggleBtn);
+    }
+
+    function toggleLocationSharing() {
+        if (isTracking) {
+            stopLocationTracking();
+        } else {
+            startLocationTracking();
+        }
+    }
+
+    function startLocationTracking() {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser');
+            return;
+        }
+        
+        const toggleBtn = document.getElementById('location-toggle');
+        if (toggleBtn) {
+            toggleBtn.textContent = 'Stop Location Sharing';
+            toggleBtn.className = 'btn btn-danger';
+        }
+        
+        const options = {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0
+        };
+        
+        locationWatchId = navigator.geolocation.watchPosition(
+            handleLocationUpdate,
+            handleLocationError,
+            options
+        );
+        
+        isTracking = true;
+        console.log('Location tracking started');
+    }
+
+    function stopLocationTracking() {
+        if (locationWatchId !== null) {
+            navigator.geolocation.clearWatch(locationWatchId);
+            locationWatchId = null;
+        }
+        
+        const toggleBtn = document.getElementById('location-toggle');
+        if (toggleBtn) {
+            toggleBtn.textContent = 'Start Location Sharing';
+            toggleBtn.className = 'btn btn-success';
+        }
+        
+        isTracking = false;
+        console.log('Location tracking stopped');
+    }
+
+    async function handleLocationUpdate(position) {
+        const locationData = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            heading: position.coords.heading,
+            speed: position.coords.speed
+        };
+        
+        console.log('Location updated:', locationData);
+        
+        try {
+            const response = await fetch('/booking/api/location/update/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify(locationData)
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to update location');
+            }
+            
+            const data = await response.json();
+            console.log('Location update response:', data);
+            
+            // Update status indicator
+            updateLocationStatus('success');
+            
+        } catch (error) {
+            console.error('Error updating location:', error);
+            updateLocationStatus('error');
+        }
+    }
+
+    function handleLocationError(error) {
+        console.error('Geolocation error:', error);
+        
+        let message = 'Unknown error';
+        switch(error.code) {
+            case error.PERMISSION_DENIED:
+                message = 'Location permission denied. Please enable location access.';
+                break;
+            case error.POSITION_UNAVAILABLE:
+                message = 'Location information unavailable.';
+                break;
+            case error.TIMEOUT:
+                message = 'Location request timed out.';
+                break;
+        }
+        
+        updateLocationStatus('error', message);
+    }
+
+    function updateLocationStatus(status, message) {
+        // Create or update status indicator
+        let statusDiv = document.getElementById('location-status');
+        if (!statusDiv) {
+            statusDiv = document.createElement('div');
+            statusDiv.id = 'location-status';
+            statusDiv.style.cssText = `
+                position: fixed;
+                top: 70px;
+                right: 20px;
+                padding: 10px 15px;
+                border-radius: 4px;
+                color: white;
+                font-size: 14px;
+                z-index: 1000;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            `;
+            document.body.appendChild(statusDiv);
+        }
+        
+        if (status === 'success') {
+            statusDiv.style.backgroundColor = '#28a745';
+            statusDiv.innerHTML = '<span style="width: 8px; height: 8px; background: white; border-radius: 50%; display: inline-block;"></span> Location Sharing Active';
+        } else if (status === 'error') {
+            statusDiv.style.backgroundColor = '#dc3545';
+            statusDiv.innerHTML = '<span>⚠</span> ' + (message || 'Location Error');
+        }
+        
+        // Auto-hide after 3 seconds for errors
+        if (status === 'error') {
+            setTimeout(() => {
+                if (statusDiv.style.backgroundColor === 'rgb(220, 53, 69)') {
+                    statusDiv.style.display = 'none';
+                }
+            }, 3000);
+        } else {
+            statusDiv.style.display = 'flex';
+        }
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    // Auto-start tracking when accepting a ride
+    document.addEventListener('click', function(e) {
+        if (e.target.type === 'submit' && e.target.closest('form[action*="accept_ride"]')) {
+            setTimeout(() => {
+                startLocationTracking();
+            }, 1000);
+        }
+    });
+
+    // Stop tracking when completing or cancelling ride
+    document.addEventListener('click', function(e) {
+        if (e.target.type === 'submit' && 
+            (e.target.closest('form[action*="complete_booking"]') || 
+            e.target.closest('form[action*="cancel_accepted_booking"]'))) {
+            stopLocationTracking();
+        }
+    });
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (isTracking) {
+            // Keep tracking active even when page reloads
+            localStorage.setItem('driverTracking', 'true');
+        }
+    });
+
+    // Resume tracking on page load if it was active
+    window.addEventListener('load', function() {
+        if (localStorage.getItem('driverTracking') === 'true') {
+            checkActiveBooking();
+        }
+    });
     </script>
 </body>
 </html>

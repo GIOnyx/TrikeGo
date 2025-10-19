@@ -21,4 +21,11 @@ urlpatterns = [
     path('driver_active_books', views.DriverActiveBookings.as_view(), name='driver_active_books'),
     path('driver/active/<int:booking_id>/cancel/', views.cancel_accepted_booking, name='cancel_accepted_booking'),
     path('driver/active/<int:booking_id>/complete/', views.complete_booking, name='complete_booking'),
+    
+    # --- ADDED: REAL-TIME TRACKING API URLS ---
+    path('api/driver/update_location/', views.update_driver_location, name='update_driver_location'),
+    path('api/booking/<int:booking_id>/driver_location/', views.get_driver_location, name='get_driver_location'),
+    path('api/rider/update_location/', views.update_rider_location, name='update_rider_location'),
+    path('api/booking/<int:booking_id>/route_info/', views.get_route_info, name='get_route_info'),
 ]
+
