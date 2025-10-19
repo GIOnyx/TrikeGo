@@ -19,6 +19,7 @@ from django.views.decorators.csrf import csrf_exempt
 from apps.booking.services import RoutingService
 from apps.booking.models import DriverLocation
 from datetime import timedelta
+from django.conf import settings
 
 
 class LandingPage(View):
@@ -103,6 +104,7 @@ class DriverDashboard(View):
         context = {
             'user': request.user,
             'driver_profile': profile,
+            'settings': settings,
             'available_rides': available_rides,
         }
         return render(request, self.template_name, context)
@@ -220,6 +222,7 @@ class RiderDashboard(View):
             'rider_profile': profile,
             'active_bookings': active_bookings,
             'ride_history': ride_history,
+            'settings': settings,
             'booking_form': booking_form
         }
 
