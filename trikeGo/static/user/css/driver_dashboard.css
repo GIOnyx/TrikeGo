@@ -125,6 +125,7 @@ body {
   padding: 0.5rem 1rem;
   text-decoration: none;
   border-radius: 4px;
+  z-index: 1002; /* make sure logout stays above map legend */
 }
 
 /* Map specific styles */
@@ -134,6 +135,7 @@ body {
     border-radius: 8px;
     border: 1px solid #ddd;
     margin-top: 1rem;
+  position: relative; /* make legend position relative to map */
 }
 #route-details {
     margin-top: 1rem;
@@ -142,3 +144,47 @@ body {
     border-radius: 8px;
     color: #334155;
 }
+
+/* Ensure Leaflet markers and divIcons are visible above map layers */
+.leaflet-container .leaflet-marker-icon,
+.leaflet-container .leaflet-div-icon {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 650 !important; /* above tile layer but below popups */
+}
+
+/* Styles for custom div icons used in driver and booking views */
+.driver-marker div, .pickup-marker div, .dest-marker div, .rider-marker div {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+
+/* Ensure leaflet popups appear above the markers */
+.leaflet-container .leaflet-popup {
+  z-index: 800 !important;
+}
+
+/* Centralized marker inner element styles (used by L.divIcon's marker-inner) */
+.driver-marker .marker-inner { background: #28a745; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; }
+.pickup-marker .marker-inner { background: #ffc107; width: 25px; height: 25px; border-radius: 50%; border: 2px solid white; }
+.dest-marker .marker-inner { background: #007bff; width: 25px; height: 25px; border-radius: 50%; border: 2px solid white; }
+.rider-marker .marker-inner { background: #ffc107; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; }
+
+/* Map legend */
+.map-legend {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255,255,255,0.95);
+  padding: 8px 10px;
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+  font-size: 13px;
+  z-index: 900;
+}
+.map-legend .legend-item { display:flex; align-items:center; gap:8px; margin-bottom:6px; color: #333; }
+.map-legend .legend-dot { width: 12px; height: 12px; border-radius: 50%; display:inline-block; border: 1px solid rgba(0,0,0,0.06); }
+.map-legend .legend-dot.driver { background: #28a745; }
+.map-legend .legend-dot.pickup { background: #ffc107; }
+.map-legend .legend-dot.dest { background: #007bff; }

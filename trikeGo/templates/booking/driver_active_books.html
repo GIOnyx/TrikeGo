@@ -58,7 +58,7 @@
         }
     </style>
 </head>
-<body>
+<body data-has-active-bookings="{% if active_bookings %}true{% else %}false{% endif %}">
     <!-- NEW HTML for the location permission overlay -->
     <div id="location-permission-overlay" class="location-permission-overlay">
         <div class="location-permission-content">
@@ -116,13 +116,14 @@
             const promptMessage = document.getElementById('location-prompt-message');
 
             // Only start tracking if there are active bookings
-            {% if active_bookings %}
+            const hasActiveBookings = document.body.getAttribute('data-has-active-bookings') === 'true';
+            if (hasActiveBookings) {
                 if ('geolocation' in navigator && 'permissions' in navigator) {
                     checkPermissions();
                 } else {
                     alert("Geolocation is not supported by this browser.");
                 }
-            {% endif %}
+            }
 
             function checkPermissions() {
                 navigator.permissions.query({ name: 'geolocation' }).then(function(result) {

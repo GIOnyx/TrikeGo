@@ -9,11 +9,16 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 </head>
 <body>
-    <div id="map"></div>
-
     <div class="header">
         <h1>Rider Dashboard</h1>
         <a href="{% url 'user:landing' %}" class="logout-btn">Logout</a>
+    </div>
+
+    <div id="map"></div>
+    <div class="map-legend" id="map-legend-rider" aria-hidden="false">
+        <div class="legend-item"><span class="legend-dot driver"></span>Driver</div>
+        <div class="legend-item"><span class="legend-dot pickup"></span>Pickup / Rider</div>
+        <div class="legend-item"><span class="legend-dot dest"></span>Destination</div>
     </div>
 
     <div class="container">
@@ -37,7 +42,7 @@
             <div class="dashboard-tracking-card" id="tracking-info" style="display:none;">
                 <h3>Live Tracking</h3>
                 <div id="driver-eta">
-                    <p><strong>Driver ETA:</strong> <span id="eta-value">Calculating...</span></p>
+                    <p><strong id="eta-label">Time to Pick-up:</strong> <span id="eta-value">Calculating...</span></p>
                     <p><strong>Distance:</strong> <span id="distance-value">--</span></p>
                     <p><strong>Last Updated:</strong> <span id="last-update">--</span></p>
                 </div>
@@ -106,16 +111,18 @@
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
-        const GEOAPIFY_API_KEY = '08947d7bb575492ca1ed887e2f9ae2c9';
+        const ORS_API_KEY = '{{ settings.OPENROUTESERVICE_API_KEY }}' || '5b3ce3597851110001cf62488c26abeb';
         
         // Real-time tracking variables
         let trackingInterval = null;
         let driverMarker = null;
-        let routeLayer = null;
+        let riderMarker = null;
         let pickupMarker = null;
         let destinationMarker = null;
+        let driverToRiderRouteLayer = null;
+        let riderToDestRouteLayer = null;
         
-        class GeoapifyAutocomplete {
+        class ORSAutocomplete {
             constructor(inputId, resultsId, latFieldId, lonFieldId, onSelectCallback) {
                 this.input = document.getElementById(inputId);
                 this.results = document.getElementById(resultsId);
@@ -159,7 +166,13 @@
             
             async search(query) {
                 try {
-                    const url = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(query)}&apiKey=${GEOAPIFY_API_KEY}&bias=countrycode:ph&filter=rect:123.8,10.2,124.0,10.4&limit=5`;
+                    const params = new URLSearchParams({
+                        api_key: ORS_API_KEY,
+                        text: query,
+                        size: 10,
+                        'boundary.country': 'PH'
+                    });
+                    const url = `https://api.openrouteservice.org/geocode/search?${params.toString()}`;
                     const response = await fetch(url);
                     const data = await response.json();
                     this.displayResults(data.features || []);
@@ -178,7 +191,8 @@
                 features.forEach(feature => {
                     const item = document.createElement('div');
                     item.className = 'autocomplete-item';
-                    const name = feature.properties.formatted;
+                    const props = feature.properties || {};
+                    const name = props.label || props.name || 'Unknown';
                     item.innerHTML = `<strong>${name}</strong>`;
                     item.addEventListener('click', () => this.selectResult(feature));
                     this.results.appendChild(item);
@@ -187,9 +201,11 @@
             }
             
             selectResult(feature) {
-                const lat = feature.properties.lat;
-                const lon = feature.properties.lon;
-                this.input.value = feature.properties.formatted;
+                const coords = feature.geometry.coordinates;
+                const lat = coords[1];
+                const lon = coords[0];
+                const props = feature.properties || {};
+                this.input.value = props.label || props.name || `${lat}, ${lon}`;
                 this.latField.value = lat;
                 this.lonField.value = lon;
                 this.results.classList.remove('active');
@@ -202,29 +218,57 @@
         }
         
         document.addEventListener('DOMContentLoaded', () => {
-            const map = L.map('map').setView([10.3157, 123.8854], 13);
+            const map = L.map('map').setView([14.5995, 120.9842], 12); // fallback Manila
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors',
                 maxZoom: 19
             }).addTo(map);
 
-            let marker = null;
+            // Default to user's current GPS if available
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        const { latitude, longitude } = pos.coords;
+                        map.setView([latitude, longitude], 15);
+                        if (!riderMarker) {
+                            const riderIcon = L.divIcon({ className: 'rider-marker', html: '<div class="marker-inner"></div>', iconSize: [24, 24] });
+                            riderMarker = L.marker([latitude, longitude], { icon: riderIcon }).addTo(map).bindPopup('Your location');
+                        }
+                    },
+                    () => {},
+                    { enableHighAccuracy: true, timeout: 5000 }
+                );
+            }
+
             let activeInput = null;
 
             const pickupInput = document.getElementById('pickup_location_input');
             const destInput = document.getElementById('destination_location_input');
 
+            function updateMapMarker(markerRef, lat, lon, icon) {
+                if (markerRef && markerRef.setLatLng) {
+                    markerRef.setLatLng([lat, lon]);
+                    return markerRef;
+                }
+                return L.marker([lat, lon], { icon }).addTo(map);
+            }
+
+            const riderIcon = L.divIcon({ className: 'rider-marker', html: '<div class="marker-inner"></div>', iconSize: [24, 24] });
+            const driverIcon = L.divIcon({ className: 'driver-marker', html: '<div class="marker-inner"></div>', iconSize: [28, 28] });
+            const pickupIcon = L.divIcon({ className: 'pickup-marker', html: '<div class="marker-inner"></div>', iconSize: [20, 20] });
+            const destIcon = L.divIcon({ className: 'dest-marker', html: '<div class="marker-inner"></div>', iconSize: [20, 20] });
+
             function updateMapAndMarker(lat, lon) {
                 map.setView([lat, lon], 16);
-                if (marker) {
-                    marker.setLatLng([lat, lon]);
-                } else {
-                    marker = L.marker([lat, lon]).addTo(map);
+                if (activeInput === 'pickup') {
+                    pickupMarker = updateMapMarker(pickupMarker, lat, lon, pickupIcon);
+                } else if (activeInput === 'destination') {
+                    destinationMarker = updateMapMarker(destinationMarker, lat, lon, destIcon);
                 }
             }
 
-            new GeoapifyAutocomplete('pickup_location_input', 'pickup-results', 'id_pickup_latitude', 'id_pickup_longitude', updateMapAndMarker);
-            new GeoapifyAutocomplete('destination_location_input', 'destination-results', 'id_destination_latitude', 'id_destination_longitude', updateMapAndMarker);
+            new ORSAutocomplete('pickup_location_input', 'pickup-results', 'id_pickup_latitude', 'id_pickup_longitude', updateMapAndMarker);
+            new ORSAutocomplete('destination_location_input', 'destination-results', 'id_destination_latitude', 'id_destination_longitude', updateMapAndMarker);
 
             pickupInput.addEventListener('focus', () => activeInput = 'pickup');
             destInput.addEventListener('focus', () => activeInput = 'destination');
@@ -236,12 +280,19 @@
                 updateMapAndMarker(lat, lng);
 
                 try {
-                    const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&apiKey=${GEOAPIFY_API_KEY}`;
+                    const params = new URLSearchParams({
+                        api_key: ORS_API_KEY,
+                        'point.lat': lat,
+                        'point.lon': lng,
+                        size: 1
+                    });
+                    const url = `https://api.openrouteservice.org/geocode/reverse?${params.toString()}`;
                     const response = await fetch(url);
                     const data = await response.json();
 
-                    if (data.features?.length > 0) {
-                        const address = data.features[0].properties.formatted;
+                    if (data.features && data.features.length > 0) {
+                        const props = data.features[0].properties || {};
+                        const address = props.label || props.name || `${lat}, ${lng}`;
                         if (activeInput === 'pickup') {
                             pickupInput.value = address;
                             document.getElementById('id_pickup_latitude').value = lat;
@@ -257,15 +308,24 @@
                 }
             });
 
-            // Real-time tracking functionality
+            // Real-time tracking functionality with two-route view
             const activeBookingItems = document.querySelectorAll('.booking-item');
             if (activeBookingItems.length > 0) {
-                const firstBooking = activeBookingItems[0];
-                const bookingId = firstBooking.dataset.bookingId;
-                const bookingStatus = firstBooking.querySelector('.booking-status').textContent.trim();
-                
-                // Start tracking if driver is assigned
-                if (bookingStatus !== 'Pending Driver Assignment') {
+                // Find the first booking that is not pending
+                let target = null;
+                activeBookingItems.forEach((el) => {
+                    const statusText = (el.querySelector('.booking-status')?.textContent || '').trim();
+                    if (statusText && statusText.toLowerCase() !== 'pending driver assignment' && target === null) {
+                        target = el;
+                    }
+                });
+                if (!target) {
+                    // fallback to first item
+                    target = activeBookingItems[0];
+                }
+                const bookingId = target.dataset.bookingId;
+                const bookingStatus = (target.querySelector('.booking-status')?.textContent || '').trim();
+                if (bookingId && bookingStatus.toLowerCase() !== 'pending driver assignment') {
                     startTracking(bookingId, map);
                 }
             }
@@ -273,106 +333,193 @@
 
         async function startTracking(bookingId, map) {
             document.getElementById('tracking-info').style.display = 'block';
-            
-            // Initial load
-            await updateDriverLocation(bookingId, map);
-            await updateRoute(bookingId, map);
-            
-            // Update every 5 seconds
+            await updateAll(bookingId, map);
             trackingInterval = setInterval(async () => {
-                await updateDriverLocation(bookingId, map);
+                await updateAll(bookingId, map);
             }, 5000);
-            
-            // Update route every 30 seconds
-            setInterval(async () => {
-                await updateRoute(bookingId, map);
-            }, 30000);
         }
 
-        async function updateDriverLocation(bookingId, map) {
+        async function updateAll(bookingId, map) {
             try {
-                const response = await fetch(`/booking/api/location/${bookingId}/`, {
-                    headers: {
-                        'X-CSRFToken': getCookie('csrftoken')
+                const infoRes = await fetch(`/api/booking/${bookingId}/route_info/`);
+                if (!infoRes.ok) {
+                    console.error('Failed to fetch route info:', infoRes.status);
+                    return;
+                }
+                const info = await infoRes.json();
+                if (info.status !== 'success') {
+                    console.error('Route info error:', info.message);
+                    return;
+                }
+                
+                console.log('Route info received:', info);
+                
+                // Coerce all coordinates to numbers and validate
+                const dLat = Number(info.driver_lat);
+                const dLon = Number(info.driver_lon);
+                const rLat = Number(info.rider_lat);
+                const rLon = Number(info.rider_lon);
+                const pLat = Number(info.pickup_lat);
+                const pLon = Number(info.pickup_lon);
+                const xLat = Number(info.destination_lat);
+                const xLon = Number(info.destination_lon);
+                
+                console.log('Coordinates:', { dLat, dLon, rLat, rLon, pLat, pLon, xLat, xLon });
+                
+                const hasDriver = Number.isFinite(dLat) && Number.isFinite(dLon);
+                const hasPickup = Number.isFinite(pLat) && Number.isFinite(pLon);
+                const hasDest = Number.isFinite(xLat) && Number.isFinite(xLon);
+                const hasRider = Number.isFinite(rLat) && Number.isFinite(rLon);
+                
+                console.log('Coordinate validation:', { hasDriver, hasPickup, hasDest, hasRider });
+                
+                // Update markers
+                if (hasDriver) {
+                    const driverLatLng = [dLat, dLon];
+                    if (!driverMarker) {
+                        const driverIcon = L.divIcon({
+                            className: 'driver-marker',
+                            html: '<div style="background: #28a745; width: 28px; height: 28px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+                            iconSize: [28, 28]
+                        });
+                        driverMarker = L.marker(driverLatLng, { icon: driverIcon }).addTo(map).bindPopup('Driver');
+                    } else {
+                        driverMarker.setLatLng(driverLatLng);
                     }
-                });
-                
-                if (!response.ok) return;
-                
-                const data = await response.json();
-                
-                // Update driver marker
-                const driverLatLng = [data.latitude, data.longitude];
-                
-                if (!driverMarker) {
-                    const driverIcon = L.divIcon({
-                        className: 'driver-marker',
-                        html: '<div style="background: #007bff; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
-                        iconSize: [30, 30]
-                    });
-                    driverMarker = L.marker(driverLatLng, { icon: driverIcon }).addTo(map);
-                    driverMarker.bindPopup('Driver Location');
-                } else {
-                    driverMarker.setLatLng(driverLatLng);
                 }
                 
-                // Update ETA display
-                if (data.eta_seconds) {
-                    const minutes = Math.ceil(data.eta_seconds / 60);
-                    document.getElementById('eta-value').textContent = `${minutes} min`;
+                if (hasRider) {
+                    const riderLatLng = [rLat, rLon];
+                    if (!riderMarker) {
+                        const riderIcon = L.divIcon({
+                            className: 'rider-marker',
+                            html: '<div style="background: #ffc107; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+                            iconSize: [24, 24]
+                        });
+                        riderMarker = L.marker(riderLatLng, { icon: riderIcon }).addTo(map).bindPopup('You');
+                    } else {
+                        riderMarker.setLatLng(riderLatLng);
+                    }
                 }
                 
-                // Update last update time
-                const updateTime = new Date(data.timestamp);
+                if (hasPickup) {
+                    const pickupLatLng = [pLat, pLon];
+                    if (!pickupMarker) {
+                        const pickupIcon = L.divIcon({
+                            className: 'pickup-marker',
+                            html: '<div style="background: #ffc107; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>',
+                            iconSize: [20, 20]
+                        });
+                        pickupMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(map).bindPopup('Pickup');
+                    } else {
+                        pickupMarker.setLatLng(pickupLatLng);
+                    }
+                }
+                
+                if (hasDest) {
+                    const destLatLng = [xLat, xLon];
+                    if (!destinationMarker) {
+                        const destIcon = L.divIcon({
+                            className: 'dest-marker',
+                            html: '<div style="background: #007bff; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>',
+                            iconSize: [20, 20]
+                        });
+                        destinationMarker = L.marker(destLatLng, { icon: destIcon }).addTo(map).bindPopup('Destination');
+                    } else {
+                        destinationMarker.setLatLng(destLatLng);
+                    }
+                }
+
+                // Build route requests only if inputs exist
+                let dtData = null, rdData = null;
+                if (hasDriver && hasPickup) {
+                    console.log('Fetching driver to pickup route...');
+                    const dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${dLon},${dLat}&end=${pLon},${pLat}`;
+                    const dtRes = await fetch(dtUrl);
+                    dtData = await dtRes.json();
+                    console.log('Driver to pickup route:', dtData);
+                }
+                if (hasPickup && hasDest) {
+                    console.log('Fetching pickup to destination route...');
+                    const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${pLon},${pLat}&end=${xLon},${xLat}`;
+                    const rdRes = await fetch(rdUrl);
+                    rdData = await rdRes.json();
+                    console.log('Pickup to destination route:', rdData);
+                }
+
+                // Remove old routes
+                if (driverToRiderRouteLayer) map.removeLayer(driverToRiderRouteLayer);
+                if (riderToDestRouteLayer) map.removeLayer(riderToDestRouteLayer);
+
+                // Add new routes
+                if (dtData && dtData.features && dtData.features.length > 0) {
+                    driverToRiderRouteLayer = L.geoJSON(dtData.features[0], {
+                        style: { color: '#28a745', weight: 5, opacity: 0.8 }
+                    }).addTo(map);
+                    console.log('Added driver to pickup route');
+                }
+                if (rdData && rdData.features && rdData.features.length > 0) {
+                    riderToDestRouteLayer = L.geoJSON(rdData.features[0], {
+                        style: { color: '#007bff', weight: 5, opacity: 0.8 }
+                    }).addTo(map);
+                    console.log('Added pickup to destination route');
+                }
+
+                // Fit map to show all routes
+                const layers = [];
+                if (driverToRiderRouteLayer) layers.push(driverToRiderRouteLayer);
+                if (riderToDestRouteLayer) layers.push(riderToDestRouteLayer);
+                if (layers.length > 0) {
+                    let bounds = layers[0].getBounds();
+                    layers.forEach(l => bounds.extend(l.getBounds()));
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                }
+
+                // Update ETA and distance
+                const etaLabel = document.getElementById('eta-label');
+                const etaValue = document.getElementById('eta-value');
+                const distanceValue = document.getElementById('distance-value');
+                
+                let etaMin = null, distKm = null;
+
+                if ((info.booking_status === 'accepted' || info.booking_status === 'on_the_way') && dtData && dtData.features?.[0]?.properties?.segments?.[0]) {
+                    etaLabel.textContent = 'Time to Pick-up:';
+                    const seg = dtData.features[0].properties.segments[0];
+                    etaMin = Math.ceil(seg.duration / 60);
+                    distKm = (seg.distance / 1000).toFixed(2);
+                    console.log('ETA updated - Time to Pick-up:', etaMin, 'min');
+                } else if (info.booking_status === 'started' && rdData && rdData.features?.[0]?.properties?.segments?.[0]) {
+                    etaLabel.textContent = 'Time to Destination:';
+                    const seg = rdData.features[0].properties.segments[0];
+                    etaMin = Math.ceil(seg.duration / 60);
+                    distKm = (seg.distance / 1000).toFixed(2);
+                    console.log('ETA updated - Time to Destination:', etaMin, 'min');
+                } else if (dtData && dtData.features?.[0]?.properties?.segments?.[0]) {
+                    // Fallback: if status missing, prefer driver->pickup ETA
+                    etaLabel.textContent = 'Time to Pick-up:';
+                    const seg = dtData.features[0].properties.segments[0];
+                    etaMin = Math.ceil(seg.duration / 60);
+                    distKm = (seg.distance / 1000).toFixed(2);
+                    console.log('ETA updated - Fallback to Pick-up:', etaMin, 'min');
+                } else if (rdData && rdData.features?.[0]?.properties?.segments?.[0]) {
+                    etaLabel.textContent = 'Time to Destination:';
+                    const seg = rdData.features[0].properties.segments[0];
+                    etaMin = Math.ceil(seg.duration / 60);
+                    distKm = (seg.distance / 1000).toFixed(2);
+                    console.log('ETA updated - Fallback to Destination:', etaMin, 'min');
+                }
+
+                if (etaMin != null) etaValue.textContent = `${etaMin} min`;
+                if (distKm != null) distanceValue.textContent = `${distKm} km`;
+
+                const updateTime = new Date();
                 document.getElementById('last-update').textContent = updateTime.toLocaleTimeString();
-                
-                // Update status indicator
                 const indicator = document.getElementById('status-indicator');
                 indicator.style.backgroundColor = '#28a745';
                 indicator.classList.add('pulse');
-                
-            } catch (error) {
-                console.error('Error updating driver location:', error);
+            } catch (e) {
+                console.error('Tracking error', e);
                 document.getElementById('status-indicator').style.backgroundColor = '#dc3545';
-            }
-        }
-
-        async function updateRoute(bookingId, map) {
-            try {
-                const response = await fetch(`/booking/api/route/${bookingId}/`, {
-                    headers: {
-                        'X-CSRFToken': getCookie('csrftoken')
-                    }
-                });
-                
-                if (!response.ok) return;
-                
-                const data = await response.json();
-                
-                // Remove old route
-                if (routeLayer) {
-                    map.removeLayer(routeLayer);
-                }
-                
-                // Draw new route
-                if (data.route_data && data.route_data.features) {
-                    routeLayer = L.geoJSON(data.route_data, {
-                        style: {
-                            color: '#007bff',
-                            weight: 5,
-                            opacity: 0.7
-                        }
-                    }).addTo(map);
-                    
-                    // Fit map to show entire route
-                    map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
-                }
-                
-                // Update distance
-                document.getElementById('distance-value').textContent = `${data.distance} km`;
-                
-            } catch (error) {
-                console.error('Error updating route:', error);
             }
         }
 
@@ -391,7 +538,6 @@
             return cookieValue;
         }
 
-        // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             if (trackingInterval) {
                 clearInterval(trackingInterval);

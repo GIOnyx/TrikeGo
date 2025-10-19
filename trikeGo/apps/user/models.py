@@ -42,4 +42,10 @@ class Rider(models.Model):
     # --- NEW FIELDS FOR RIDER TRACKING ---
     current_latitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)
     current_longitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)
+    # Rider availability status
+    STATUS_CHOICES = (
+        ('Available', 'Available'),
+        ('In_trip', 'In trip'),
+    )
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='Available')
 
