@@ -20,6 +20,7 @@ from apps.booking.services import RoutingService
 from apps.booking.models import DriverLocation
 from datetime import timedelta
 from django.conf import settings
+from decimal import Decimal
 
 
 class LandingPage(View):
@@ -100,12 +101,17 @@ class DriverDashboard(View):
             return redirect('user:landing')
         profile = Driver.objects.filter(user=request.user).first()
         available_rides = Booking.objects.filter(status='pending', driver__isnull=True)
+        active_booking = Booking.objects.filter(
+            driver=request.user,
+            status__in=['accepted', 'on_the_way', 'started']
+        ).order_by('-booking_time').first()
 
         context = {
             'user': request.user,
             'driver_profile': profile,
             'settings': settings,
             'available_rides': available_rides,
+            'active_booking': active_booking,
         }
         return render(request, self.template_name, context)
 
@@ -114,10 +120,32 @@ def accept_ride(request, booking_id):
     if not request.user.is_authenticated or request.user.trikego_user != 'D':
         return redirect('user:landing')
 
+    # Enforce: driver can only manage one active booking
+    driver_has_active = Booking.objects.filter(
+        driver=request.user,
+        status__in=['accepted', 'on_the_way', 'started']
+    ).exists()
+    if driver_has_active:
+        messages.error(request, "You already have an active trip. Complete or cancel it first.")
+        return redirect('user:driver_dashboard')
+
+    # Also prevent acceptance if rider already has an active trip
     booking = get_object_or_404(Booking, id=booking_id, status='pending', driver__isnull=True)
+    rider_active = Booking.objects.filter(
+        rider=booking.rider,
+        status__in=['accepted', 'on_the_way', 'started']
+    ).exists()
+    if rider_active:
+        messages.error(request, "Rider already has an active trip.")
+        return redirect('user:driver_dashboard')
+
     booking.driver = request.user
     booking.status = 'accepted'
     booking.start_time = timezone.now()
+
+    # Update statuses
+    Driver.objects.filter(user=request.user).update(status='In_trip')
+    Rider.objects.filter(user=booking.rider).update(status='In_trip')
     
     # Calculate initial route
     try:
@@ -136,7 +164,7 @@ def accept_ride(request, booking_id):
             
             # Update booking estimates
             booking.estimated_distance = Decimal(str(route_info['distance']))
-            booking.estimated_duration = route_info['duration'] // 60  # Convert to minutes
+            booking.estimated_duration = route_info['duration'] // 60  # minutes
             booking.estimated_arrival = timezone.now() + timedelta(seconds=route_info['duration'])
     except DriverLocation.DoesNotExist:
         messages.warning(request, "Please enable location sharing to see route information.")
@@ -174,6 +202,9 @@ def cancel_accepted_booking(request, booking_id):
         booking.driver = None
         booking.start_time = None
         booking.save()
+        # Reset statuses
+        Driver.objects.filter(user=request.user).update(status='Online')
+        Rider.objects.filter(user=booking.rider).update(status='Available')
 
         messages.success(request, "You have cancelled your acceptance. The booking is now available again.")
     else:
@@ -193,6 +224,9 @@ def complete_booking(request, booking_id):
         booking.status = 'completed'
         booking.end_time = timezone.now()
         booking.save()
+        # Reset statuses
+        Driver.objects.filter(user=request.user).update(status='Online')
+        Rider.objects.filter(user=booking.rider).update(status='Available')
         messages.success(request, "Booking marked as completed!")
     else:
         messages.error(request, "Cannot complete this booking.")
@@ -235,6 +269,15 @@ class RiderDashboard(View):
     def post(self, request):
         if not request.user.is_authenticated or request.user.trikego_user != 'R':
             return redirect('user:landing')
+        
+        # Restrict: rider can only have one active booking
+        has_active = Booking.objects.filter(
+            rider=request.user,
+            status__in=['pending', 'accepted', 'on_the_way', 'started']
+        ).exists()
+        if has_active:
+            messages.error(request, 'You already have an active ride. Please complete or cancel it first.')
+            return redirect('user:rider_dashboard')
         
         form = BookingForm(request.POST)
         
@@ -337,25 +380,60 @@ def update_rider_location(request):
 @login_required
 def get_route_info(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id)
-    # --- FIXED: Changed permission check to allow any driver to review ---
-    if not request.user.is_authenticated or request.user.trikego_user != 'D':
-        return JsonResponse({'status': 'error', 'message': 'Only drivers can view route info.'}, status=403)
     
-    try:
-        driver_profile = Driver.objects.get(user=request.user) # Use request.user to get current driver
-        rider_profile = Rider.objects.get(user=booking.rider)
-        
+    # Allow: drivers to preview using their own current location; riders to view for their own booking
+    if request.user.trikego_user == 'D':
+        try:
+            driver_profile = Driver.objects.get(user=request.user)
+            rider_profile = Rider.objects.get(user=booking.rider)
+        except (Driver.DoesNotExist, Rider.DoesNotExist):
+            return JsonResponse({'status': 'error', 'message': 'Profile not found for driver or rider.'}, status=404)
+    elif request.user.trikego_user == 'R':
+        if request.user != booking.rider:
+            return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
+        if not booking.driver:
+            return JsonResponse({'status': 'error', 'message': 'No driver assigned yet.'}, status=404)
+        try:
+            driver_profile = Driver.objects.get(user=booking.driver)
+            rider_profile = Rider.objects.get(user=request.user)
+        except (Driver.DoesNotExist, Rider.DoesNotExist):
+            return JsonResponse({'status': 'error', 'message': 'Profile not found for driver or rider.'}, status=404)
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Unauthorized.'}, status=403)
+    
+    return JsonResponse({
+        'status': 'success',
+        'booking_status': booking.status,
+        'driver_lat': driver_profile.current_latitude,
+        'driver_lon': driver_profile.current_longitude,
+        'rider_lat': rider_profile.current_latitude,
+        'rider_lon': rider_profile.current_longitude,
+        'pickup_lat': booking.pickup_latitude,
+        'pickup_lon': booking.pickup_longitude,
+        'destination_lat': booking.destination_latitude,
+        'destination_lon': booking.destination_longitude,
+    })
+
+@login_required
+def get_driver_active_booking(request):
+    """Get the active booking for the current driver"""
+    if request.user.trikego_user != 'D':
+        return JsonResponse({'status': 'error', 'message': 'Only drivers can access this endpoint.'}, status=403)
+    
+    active_booking = Booking.objects.filter(
+        driver=request.user,
+        status__in=['accepted', 'on_the_way', 'started']
+    ).order_by('-booking_time').first()
+    
+    if active_booking:
         return JsonResponse({
             'status': 'success',
-            'driver_lat': driver_profile.current_latitude,
-            'driver_lon': driver_profile.current_longitude,
-            'rider_lat': rider_profile.current_latitude,
-            'rider_lon': rider_profile.current_longitude,
-            'pickup_lat': booking.pickup_latitude,
-            'pickup_lon': booking.pickup_longitude,
-            'destination_lat': booking.destination_latitude,
-            'destination_lon': booking.destination_longitude,
+            'booking_id': active_booking.id,
+            'booking_status': active_booking.status
         })
-    except (Driver.DoesNotExist, Rider.DoesNotExist):
-        return JsonResponse({'status': 'error', 'message': 'Profile not found for driver or rider.'}, status=404)
+    else:
+        return JsonResponse({
+            'status': 'success',
+            'booking_id': None
+        })
 
