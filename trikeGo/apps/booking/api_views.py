@@ -173,3 +173,4 @@ def manual_reroute(request, booking_id):
         return Response({'status': 'success', 'message': 'Route recalculated'})
     except DriverLocation.DoesNotExist:
         return Response({'error': 'Driver location not available'}, status=status.HTTP_404_NOT_FOUND)
+    

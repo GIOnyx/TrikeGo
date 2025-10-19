@@ -76,18 +76,18 @@
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const GEOAPIFY_API_KEY = '08947d7bb575492ca1ed887e2f9ae2c9';
+            const ORS_API_KEY = '{{ settings.OPENROUTESERVICE_API_KEY }}' || '5b3ce3597851110001cf62488c26abeb';
 
             const map = L.map('map-container').setView([10.3157, 123.8854], 13);
-            L.tileLayer('https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey={apiKey}', {
-                attribution: 'Powered by Geoapify',
-                maxZoom: 20,
-                id: 'osm-bright',
-                apiKey: GEOAPIFY_API_KEY
+            
+            // Use OpenStreetMap tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
             }).addTo(map);
 
             let driverToRiderRouteLayer, riderToDestRouteLayer;
-            let riderMarker, destMarker;
+            let riderMarker, destMarker, driverMarker;
             const routeDetailsContainer = document.getElementById('route-details');
             const reviewButtons = document.querySelectorAll('.review-ride-btn');
 
@@ -97,7 +97,7 @@
                     routeDetailsContainer.innerHTML = "Fetching route information...";
 
                     try {
-                        // 1. Get all coordinates from our backend
+                        // Get all coordinates from backend
                         const infoResponse = await fetch(`/api/booking/${bookingId}/route_info/`);
                         const routeInfo = await infoResponse.json();
 
@@ -106,58 +106,116 @@
                         }
                         
                         // Clear previous layers
-                        if (driverToRiderRouteLayer) driverToRiderRouteLayer.remove();
-                        if (riderToDestRouteLayer) riderToDestRouteLayer.remove();
-                        if (riderMarker) riderMarker.remove();
-                        if (destMarker) destMarker.remove();
+                        if (driverToRiderRouteLayer) map.removeLayer(driverToRiderRouteLayer);
+                        if (riderToDestRouteLayer) map.removeLayer(riderToDestRouteLayer);
+                        if (riderMarker) map.removeLayer(riderMarker);
+                        if (destMarker) map.removeLayer(destMarker);
+                        if (driverMarker) map.removeLayer(driverMarker);
+
+                        // Add marker for driver location (current position)
+                        const driverLatLng = [routeInfo.driver_lat, routeInfo.driver_lon];
+                        const driverIcon = L.divIcon({
+                            className: 'driver-marker',
+                            html: '<div style="background: #007bff; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+                            iconSize: [30, 30]
+                        });
+                        driverMarker = L.marker(driverLatLng, { icon: driverIcon }).addTo(map).bindPopup('Your Location');
 
                         // Add markers for pickup and destination
                         const pickupLatLng = [routeInfo.pickup_lat, routeInfo.pickup_lon];
                         const destLatLng = [routeInfo.destination_lat, routeInfo.destination_lon];
-                        riderMarker = L.marker(pickupLatLng).addTo(map).bindPopup('Rider Pickup');
-                        destMarker = L.marker(destLatLng).addTo(map).bindPopup('Destination');
+                        
+                        const pickupIcon = L.divIcon({
+                            className: 'pickup-marker',
+                            html: '<div style="background: #ffc107; width: 25px; height: 25px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+                            iconSize: [25, 25]
+                        });
+                        
+                        const destIcon = L.divIcon({
+                            className: 'dest-marker',
+                            html: '<div style="background: #dc3545; width: 25px; height: 25px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+                            iconSize: [25, 25]
+                        });
+                        
+                        riderMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(map).bindPopup('Pickup Location');
+                        destMarker = L.marker(destLatLng, { icon: destIcon }).addTo(map).bindPopup('Destination');
 
-                        // 2. Fetch Driver-to-Rider route
-                        const driverToRiderUrl = `https://api.geoapify.com/v1/routing?waypoints=${routeInfo.driver_lat},${routeInfo.driver_lon}|${routeInfo.pickup_lat},${routeInfo.pickup_lon}&mode=motorcycle&apiKey=${GEOAPIFY_API_KEY}`;
-                        const dtResponse = await fetch(driverToRiderUrl);
+                        // Fetch Driver-to-Rider route using ORS
+                        const dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${routeInfo.driver_lon},${routeInfo.driver_lat}&end=${routeInfo.pickup_lon},${routeInfo.pickup_lat}`;
+                        const dtResponse = await fetch(dtUrl);
                         const dtResult = await dtResponse.json();
                         
-                        const dtRoute = dtResult.features[0];
-                        driverToRiderRouteLayer = L.geoJSON(dtRoute, {
-                            style: (feature) => ({ color: '#007bff', weight: 5, opacity: 0.8 })
-                        }).addTo(map);
+                        if (dtResult.features && dtResult.features.length > 0) {
+                            const dtRoute = dtResult.features[0];
+                            driverToRiderRouteLayer = L.geoJSON(dtRoute, {
+                                style: {
+                                    color: '#007bff',
+                                    weight: 5,
+                                    opacity: 0.8
+                                }
+                            }).addTo(map);
+                        }
 
-                        // 3. Fetch Rider-to-Destination route
-                        const riderToDestUrl = `https://api.geoapify.com/v1/routing?waypoints=${routeInfo.pickup_lat},${routeInfo.pickup_lon}|${routeInfo.destination_lat},${routeInfo.destination_lon}&mode=motorcycle&apiKey=${GEOAPIFY_API_KEY}`;
-                        const rdResponse = await fetch(riderToDestUrl);
+                        // Fetch Rider-to-Destination route using ORS
+                        const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${routeInfo.pickup_lon},${routeInfo.pickup_lat}&end=${routeInfo.destination_lon},${routeInfo.destination_lat}`;
+                        const rdResponse = await fetch(rdUrl);
                         const rdResult = await rdResponse.json();
                         
-                        const rdRoute = rdResult.features[0];
-                        riderToDestRouteLayer = L.geoJSON(rdRoute, {
-                            style: (feature) => ({ color: '#28a745', weight: 5, opacity: 0.8 })
-                        }).addTo(map);
+                        if (rdResult.features && rdResult.features.length > 0) {
+                            const rdRoute = rdResult.features[0];
+                            riderToDestRouteLayer = L.geoJSON(rdRoute, {
+                                style: {
+                                    color: '#28a745',
+                                    weight: 5,
+                                    opacity: 0.8
+                                }
+                            }).addTo(map);
+                        }
                         
                         // Fit map to show both routes
-                        const fullBounds = driverToRiderRouteLayer.getBounds().extend(riderToDestRouteLayer.getBounds());
-                        map.fitBounds(fullBounds, { padding: [50, 50] });
+                        const allLayers = [];
+                        if (driverToRiderRouteLayer) allLayers.push(driverToRiderRouteLayer);
+                        if (riderToDestRouteLayer) allLayers.push(riderToDestRouteLayer);
+                        
+                        if (allLayers.length > 0) {
+                            let bounds = allLayers[0].getBounds();
+                            allLayers.forEach(layer => {
+                                bounds.extend(layer.getBounds());
+                            });
+                            map.fitBounds(bounds, { padding: [50, 50] });
+                        }
 
-                        // 4. Display combined details
-                        const dtProps = dtRoute.properties;
-                        const rdProps = rdRoute.properties;
-                        const totalDistance = ((dtProps.distance + rdProps.distance) / 1000).toFixed(2);
-                        const totalTime = ((dtProps.time + rdProps.time) / 60).toFixed(0);
+                        // Display combined details
+                        const dtProps = dtResult.features[0].properties;
+                        const rdProps = rdResult.features[0].properties;
+                        
+                        const dtDistance = (dtProps.segments[0].distance / 1000).toFixed(2);
+                        const dtTime = (dtProps.segments[0].duration / 60).toFixed(0);
+                        const rdDistance = (rdProps.segments[0].distance / 1000).toFixed(2);
+                        const rdTime = (rdProps.segments[0].duration / 60).toFixed(0);
+                        
+                        const totalDistance = (parseFloat(dtDistance) + parseFloat(rdDistance)).toFixed(2);
+                        const totalTime = (parseInt(dtTime) + parseInt(rdTime));
 
                         routeDetailsContainer.innerHTML = `
-                            <p><strong style="color: #007bff;">To Rider:</strong> ${(dtProps.distance / 1000).toFixed(2)} km / ${(dtProps.time / 60).toFixed(0)} mins</p>
-                            <p><strong style="color: #28a745;">Trip to Destination:</strong> ${(rdProps.distance / 1000).toFixed(2)} km / ${(rdProps.time / 60).toFixed(0)} mins</p>
-                            <hr>
-                            <p><strong>Total Estimated Distance:</strong> ${totalDistance} km</p>
-                            <p><strong>Total Estimated Time:</strong> ${totalTime} minutes</p>
+                            <div style="margin-bottom: 15px;">
+                                <p><strong style="color: #007bff;">🚗 To Pickup Point:</strong></p>
+                                <p style="margin-left: 20px;">Distance: ${dtDistance} km | Time: ${dtTime} mins</p>
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <p><strong style="color: #28a745;">🎯 Trip to Destination:</strong></p>
+                                <p style="margin-left: 20px;">Distance: ${rdDistance} km | Time: ${rdTime} mins</p>
+                            </div>
+                            <hr style="margin: 15px 0;">
+                            <div>
+                                <p><strong>📊 Total Journey:</strong></p>
+                                <p style="margin-left: 20px;">Distance: ${totalDistance} km | Time: ${totalTime} mins</p>
+                            </div>
                         `;
 
                     } catch (error) {
-                        console.error("Routing API error:", error);
-                        routeDetailsContainer.innerHTML = `Could not calculate the route. ${error.message}`;
+                        console.error("ORS Routing error:", error);
+                        routeDetailsContainer.innerHTML = `<p style="color: #dc3545;">Could not calculate the route. ${error.message}</p>`;
                     }
                 });
             });
@@ -171,15 +229,11 @@
     let currentBookingId = null;
 
     document.addEventListener('DOMContentLoaded', function() {
-        // Check if driver has active booking
         checkActiveBooking();
-        
-        // Add manual location sharing toggle
         addLocationToggle();
     });
 
     function checkActiveBooking() {
-        // Check if there's an active booking from the page
         const activeBookingElement = document.querySelector('[data-active-booking-id]');
         if (activeBookingElement) {
             currentBookingId = activeBookingElement.dataset.activeBookingId;
@@ -280,7 +334,6 @@
             const data = await response.json();
             console.log('Location update response:', data);
             
-            // Update status indicator
             updateLocationStatus('success');
             
         } catch (error) {
@@ -309,7 +362,6 @@
     }
 
     function updateLocationStatus(status, message) {
-        // Create or update status indicator
         let statusDiv = document.getElementById('location-status');
         if (!statusDiv) {
             statusDiv = document.createElement('div');
@@ -338,7 +390,6 @@
             statusDiv.innerHTML = '<span>⚠</span> ' + (message || 'Location Error');
         }
         
-        // Auto-hide after 3 seconds for errors
         if (status === 'error') {
             setTimeout(() => {
                 if (statusDiv.style.backgroundColor === 'rgb(220, 53, 69)') {
@@ -365,7 +416,6 @@
         return cookieValue;
     }
 
-    // Auto-start tracking when accepting a ride
     document.addEventListener('click', function(e) {
         if (e.target.type === 'submit' && e.target.closest('form[action*="accept_ride"]')) {
             setTimeout(() => {
@@ -374,7 +424,6 @@
         }
     });
 
-    // Stop tracking when completing or cancelling ride
     document.addEventListener('click', function(e) {
         if (e.target.type === 'submit' && 
             (e.target.closest('form[action*="complete_booking"]') || 
@@ -383,15 +432,12 @@
         }
     });
 
-    // Cleanup on page unload
     window.addEventListener('beforeunload', function() {
         if (isTracking) {
-            // Keep tracking active even when page reloads
             localStorage.setItem('driverTracking', 'true');
         }
     });
 
-    // Resume tracking on page load if it was active
     window.addEventListener('load', function() {
         if (localStorage.getItem('driverTracking') === 'true') {
             checkActiveBooking();
