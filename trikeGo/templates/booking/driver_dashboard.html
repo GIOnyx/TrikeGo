@@ -163,5 +163,240 @@
             });
         });
     </script>
+
+    <script>
+    // Driver Location Broadcasting System
+    let locationWatchId = null;
+    let isTracking = false;
+    let currentBookingId = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check if driver has active booking
+        checkActiveBooking();
+        
+        // Add manual location sharing toggle
+        addLocationToggle();
+    });
+
+    function checkActiveBooking() {
+        // Check if there's an active booking from the page
+        const activeBookingElement = document.querySelector('[data-active-booking-id]');
+        if (activeBookingElement) {
+            currentBookingId = activeBookingElement.dataset.activeBookingId;
+            startLocationTracking();
+        }
+    }
+
+    function addLocationToggle() {
+        const container = document.querySelector('.dashboard-quickaction-card .action-buttons');
+        if (!container) return;
+        
+        const toggleBtn = document.createElement('button');
+        toggleBtn.id = 'location-toggle';
+        toggleBtn.className = 'btn btn-warning';
+        toggleBtn.textContent = 'Start Location Sharing';
+        toggleBtn.onclick = toggleLocationSharing;
+        
+        container.appendChild(toggleBtn);
+    }
+
+    function toggleLocationSharing() {
+        if (isTracking) {
+            stopLocationTracking();
+        } else {
+            startLocationTracking();
+        }
+    }
+
+    function startLocationTracking() {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser');
+            return;
+        }
+        
+        const toggleBtn = document.getElementById('location-toggle');
+        if (toggleBtn) {
+            toggleBtn.textContent = 'Stop Location Sharing';
+            toggleBtn.className = 'btn btn-danger';
+        }
+        
+        const options = {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0
+        };
+        
+        locationWatchId = navigator.geolocation.watchPosition(
+            handleLocationUpdate,
+            handleLocationError,
+            options
+        );
+        
+        isTracking = true;
+        console.log('Location tracking started');
+    }
+
+    function stopLocationTracking() {
+        if (locationWatchId !== null) {
+            navigator.geolocation.clearWatch(locationWatchId);
+            locationWatchId = null;
+        }
+        
+        const toggleBtn = document.getElementById('location-toggle');
+        if (toggleBtn) {
+            toggleBtn.textContent = 'Start Location Sharing';
+            toggleBtn.className = 'btn btn-success';
+        }
+        
+        isTracking = false;
+        console.log('Location tracking stopped');
+    }
+
+    async function handleLocationUpdate(position) {
+        const locationData = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            heading: position.coords.heading,
+            speed: position.coords.speed
+        };
+        
+        console.log('Location updated:', locationData);
+        
+        try {
+            const response = await fetch('/booking/api/location/update/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify(locationData)
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to update location');
+            }
+            
+            const data = await response.json();
+            console.log('Location update response:', data);
+            
+            // Update status indicator
+            updateLocationStatus('success');
+            
+        } catch (error) {
+            console.error('Error updating location:', error);
+            updateLocationStatus('error');
+        }
+    }
+
+    function handleLocationError(error) {
+        console.error('Geolocation error:', error);
+        
+        let message = 'Unknown error';
+        switch(error.code) {
+            case error.PERMISSION_DENIED:
+                message = 'Location permission denied. Please enable location access.';
+                break;
+            case error.POSITION_UNAVAILABLE:
+                message = 'Location information unavailable.';
+                break;
+            case error.TIMEOUT:
+                message = 'Location request timed out.';
+                break;
+        }
+        
+        updateLocationStatus('error', message);
+    }
+
+    function updateLocationStatus(status, message) {
+        // Create or update status indicator
+        let statusDiv = document.getElementById('location-status');
+        if (!statusDiv) {
+            statusDiv = document.createElement('div');
+            statusDiv.id = 'location-status';
+            statusDiv.style.cssText = `
+                position: fixed;
+                top: 70px;
+                right: 20px;
+                padding: 10px 15px;
+                border-radius: 4px;
+                color: white;
+                font-size: 14px;
+                z-index: 1000;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            `;
+            document.body.appendChild(statusDiv);
+        }
+        
+        if (status === 'success') {
+            statusDiv.style.backgroundColor = '#28a745';
+            statusDiv.innerHTML = '<span style="width: 8px; height: 8px; background: white; border-radius: 50%; display: inline-block;"></span> Location Sharing Active';
+        } else if (status === 'error') {
+            statusDiv.style.backgroundColor = '#dc3545';
+            statusDiv.innerHTML = '<span>⚠</span> ' + (message || 'Location Error');
+        }
+        
+        // Auto-hide after 3 seconds for errors
+        if (status === 'error') {
+            setTimeout(() => {
+                if (statusDiv.style.backgroundColor === 'rgb(220, 53, 69)') {
+                    statusDiv.style.display = 'none';
+                }
+            }, 3000);
+        } else {
+            statusDiv.style.display = 'flex';
+        }
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    // Auto-start tracking when accepting a ride
+    document.addEventListener('click', function(e) {
+        if (e.target.type === 'submit' && e.target.closest('form[action*="accept_ride"]')) {
+            setTimeout(() => {
+                startLocationTracking();
+            }, 1000);
+        }
+    });
+
+    // Stop tracking when completing or cancelling ride
+    document.addEventListener('click', function(e) {
+        if (e.target.type === 'submit' && 
+            (e.target.closest('form[action*="complete_booking"]') || 
+            e.target.closest('form[action*="cancel_accepted_booking"]'))) {
+            stopLocationTracking();
+        }
+    });
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (isTracking) {
+            // Keep tracking active even when page reloads
+            localStorage.setItem('driverTracking', 'true');
+        }
+    });
+
+    // Resume tracking on page load if it was active
+    window.addEventListener('load', function() {
+        if (localStorage.getItem('driverTracking') === 'true') {
+            checkActiveBooking();
+        }
+    });
+    </script>
 </body>
 </html>

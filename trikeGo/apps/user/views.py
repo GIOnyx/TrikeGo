@@ -16,6 +16,9 @@ import json
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
+from apps.booking.services import RoutingService
+from apps.booking.models import DriverLocation
+from datetime import timedelta
 
 
 class LandingPage(View):
@@ -113,8 +116,32 @@ def accept_ride(request, booking_id):
     booking.driver = request.user
     booking.status = 'accepted'
     booking.start_time = timezone.now()
+    
+    # Calculate initial route
+    try:
+        driver_location = DriverLocation.objects.get(driver=request.user)
+        routing_service = RoutingService()
+        
+        # Calculate route from driver to pickup
+        start_coords = (float(driver_location.longitude), float(driver_location.latitude))
+        pickup_coords = (float(booking.pickup_longitude), float(booking.pickup_latitude))
+        
+        route_info = routing_service.calculate_route(start_coords, pickup_coords)
+        
+        if route_info:
+            # Save route snapshot
+            routing_service.save_route_snapshot(booking, route_info)
+            
+            # Update booking estimates
+            booking.estimated_distance = Decimal(str(route_info['distance']))
+            booking.estimated_duration = route_info['duration'] // 60  # Convert to minutes
+            booking.estimated_arrival = timezone.now() + timedelta(seconds=route_info['duration'])
+    except DriverLocation.DoesNotExist:
+        messages.warning(request, "Please enable location sharing to see route information.")
+    except Exception as e:
+        messages.warning(request, f"Could not calculate route: {str(e)}")
+    
     booking.save()
-
     messages.success(request, f"You have accepted the ride from {booking.pickup_address} to {booking.destination_address}.")
     return redirect('user:driver_dashboard')
 

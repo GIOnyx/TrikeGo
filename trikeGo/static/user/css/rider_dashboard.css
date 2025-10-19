@@ -189,3 +189,51 @@ body {
   padding:28px 28px 22px;
   margin-top: 1rem;
 }
+
+.dashboard-tracking-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 1.5rem;
+        }
+
+        .tracking-status {
+            display: flex;
+            align-items: center;
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+            background: #6c757d;
+        }
+
+        .status-indicator.pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        #driver-eta p {
+            margin: 0.5rem 0;
+        }
+
+        #driver-eta strong {
+            color: #495057;
+        }
+
+        #eta-value {
+            color: #007bff;
+            font-weight: bold;
+            font-size: 1.1em;
+        }

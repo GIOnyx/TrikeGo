@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework', 
     'apps.user',
     'apps.booking',
 ]
@@ -98,6 +99,17 @@ DATABASES = {
     }
 }
 
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
+
+OPENROUTESERVICE_API_KEY = os.environ.get('eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjIyNTIxNTU4NTViYTQyOWJhNmVjOWI1NGZjOWUyOTI3IiwiaCI6Im11cm11cjY0In0=')
+
 AUTH_USER_MODEL = "user.CustomUser"
 
 # Password validation
@@ -151,3 +163,12 @@ STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+GEOAPIFY_API_KEY='08947d7bb575492ca1ed887e2f9ae2c9'
+OPENROUTESERVICE_API_KEY='eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjIyNTIxNTU4NTViYTQyOWJhNmVjOWI1NGZjOWUyOTI3IiwiaCI6Im11cm11cjY0In0='
