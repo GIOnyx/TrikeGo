@@ -1,0 +1,22 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Registration Complete — TrikeGo</title>
+  <link rel="stylesheet" href="{% static 'user/css/landingPageStyle.css' %}?v=2" />
+</head>
+<body class="auth-page">
+  <section class="hero" style="min-height:100vh">
+    <div class="hero-overlay"></div>
+    <div class="container" style="position:relative;z-index:1">
+      <div class="modal-card" style="max-width:520px;margin:10vh auto;text-align:center;">
+        <h2>Registration Submitted</h2>
+        <p>Your application is under review. We'll notify you when it's approved.</p>
+        <a href="{% url 'user:landing' %}" class="btn primary wide">Return to Home</a>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

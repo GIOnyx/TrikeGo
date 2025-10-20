@@ -235,3 +235,33 @@ class DriverVerificationForm(forms.Form):
         except Driver.DoesNotExist:
             raise ValidationError('Driver does not exist.')
         return driver_id
+
+
+class TricycleForm(forms.ModelForm):
+    class Meta:
+        from .models import Tricycle
+        model = Tricycle
+        fields = ['plate_number', 'color', 'image_url']
+        widgets = {
+            'plate_number': forms.TextInput(attrs={'placeholder': 'Plate number', 'required': True}),
+            'color': forms.TextInput(attrs={'placeholder': 'Tricycle color', 'required': True}),
+            'image_url': forms.URLInput(attrs={'placeholder': 'Image URL', 'required': True}),
+        }
+
+    def clean_plate_number(self):
+        plate = self.cleaned_data.get('plate_number', '').strip()
+        if not plate:
+            raise ValidationError('Plate number is required.')
+        from .models import Tricycle
+        if Tricycle.objects.filter(plate_number__iexact=plate).exists():
+            raise ValidationError('A tricycle with this plate number already exists.')
+        return plate
+
+    def clean_image_url(self):
+        url = self.cleaned_data.get('image_url', '')
+        validator = URLValidator(schemes=['http', 'https'])
+        try:
+            validator(url)
+        except ValidationError:
+            raise ValidationError('Image URL must be a valid HTTP/HTTPS URL')
+        return url
