@@ -19,14 +19,17 @@
           {% csrf_token %}
           {{ form.plate_number }}
           {{ form.color }}
-          {{ form.capacity }}
           {{ form.image_url }}
 
           {% if form.errors %}
             <div class="error-message">{{ form.errors }}</div>
           {% endif %}
 
-          <button type="submit" class="btn primary wide">Submit</button>
+          {% if step == 1 %}
+            <button type="submit" class="btn primary wide">Next</button>
+          {% else %}
+            <button type="submit" class="btn primary wide">Create driver account</button>
+          {% endif %}
         </form>
       </div>
     </div>

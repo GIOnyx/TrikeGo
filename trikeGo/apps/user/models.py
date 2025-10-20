@@ -42,10 +42,12 @@ class Driver(models.Model):
 class Tricycle(models.Model):
     plate_number = models.CharField(max_length=32, unique=True)
     color = models.CharField(max_length=32)
-    capacity = models.IntegerField(default=3)
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='tricycles')
     image_url = models.URLField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'tricycle'
 
     def __str__(self):
         return f"Trike {self.plate_number} ({self.color})"

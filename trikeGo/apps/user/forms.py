@@ -241,11 +241,10 @@ class TricycleForm(forms.ModelForm):
     class Meta:
         from .models import Tricycle
         model = Tricycle
-        fields = ['plate_number', 'color', 'capacity', 'image_url']
+        fields = ['plate_number', 'color', 'image_url']
         widgets = {
             'plate_number': forms.TextInput(attrs={'placeholder': 'Plate number', 'required': True}),
             'color': forms.TextInput(attrs={'placeholder': 'Tricycle color', 'required': True}),
-            'capacity': forms.NumberInput(attrs={'min': 1, 'required': True}),
             'image_url': forms.URLInput(attrs={'placeholder': 'Image URL', 'required': True}),
         }
 
