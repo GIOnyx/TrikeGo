@@ -400,7 +400,39 @@ def get_route_info(request, booking_id):
             return JsonResponse({'status': 'error', 'message': 'Profile not found for driver or rider.'}, status=404)
     else:
         return JsonResponse({'status': 'error', 'message': 'Unauthorized.'}, status=403)
-    
+    # Try to include tricycle details if available. The Tricycle model or relation
+    # may not exist yet in the codebase, so handle gracefully.
+    tricycle_data = None
+    try:
+        # Prefer explicit Tricycle model if available
+        from apps.user.models import Tricycle
+        try:
+            # Some implementations may link Tricycle to Driver (model instance) or to the CustomUser.
+            trike = Tricycle.objects.filter(driver=driver_profile).first()
+            if not trike:
+                # Try linking by user if different FK was used
+                trike = Tricycle.objects.filter(driver__user=driver_profile.user).first()
+        except Exception:
+            trike = None
+        if trike:
+            tricycle_data = {
+                'plate_number': getattr(trike, 'plate_number', None),
+                'color': getattr(trike, 'color', None),
+                'image_url': getattr(trike, 'image_url', None),
+            }
+    except Exception:
+        # No Tricycle model present — try to access a related attribute on the driver_profile
+        try:
+            trike = getattr(driver_profile, 'tricycle', None)
+            if trike:
+                tricycle_data = {
+                    'plate_number': getattr(trike, 'plate_number', None),
+                    'color': getattr(trike, 'color', None),
+                    'image_url': getattr(trike, 'image_url', None),
+                }
+        except Exception:
+            tricycle_data = None
+
     return JsonResponse({
         'status': 'success',
         'booking_status': booking.status,
@@ -412,6 +444,7 @@ def get_route_info(request, booking_id):
         'pickup_lon': booking.pickup_longitude,
         'destination_lat': booking.destination_latitude,
         'destination_lon': booking.destination_longitude,
+        'tricycle': tricycle_data,
     })
 
 @login_required
