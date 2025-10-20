@@ -30,11 +30,25 @@ class Driver(models.Model):
         ('Offline', 'Offline'),
         ('Online', 'Online'),
         ('In_trip', 'In trip'),
+        ('pending_approval', 'Pending Approval'),
     )
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Offline')
+    # longest choice value is 'pending_approval' (16 chars) so set max_length accordingly
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default='Offline')
     is_verified = models.BooleanField(default=False)
     current_latitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)
     current_longitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)
+
+
+class Tricycle(models.Model):
+    plate_number = models.CharField(max_length=32, unique=True)
+    color = models.CharField(max_length=32)
+    capacity = models.IntegerField(default=3)
+    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='tricycles')
+    image_url = models.URLField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Trike {self.plate_number} ({self.color})"
 
 class Rider(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, null=True, blank=True)

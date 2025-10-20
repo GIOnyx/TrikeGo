@@ -15,6 +15,7 @@ urlpatterns = [
     path('rider_dashboard/', views.RiderDashboard.as_view(), name='rider_dashboard'),
     path('driver_dashboard/', views.DriverDashboard.as_view(), name='driver_dashboard'),
     path('trike-admin/dashboard/', views.AdminDashboard.as_view(), name='admin_dashboard'),
+    path('register/tricycle/', views.TricycleRegister.as_view(), name='tricycle_register'),
 
     # Ride actions
     path('accept_ride/<int:booking_id>/', views.accept_ride, name='accept_ride'),

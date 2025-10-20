@@ -7,8 +7,8 @@ from django.views import View
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from .forms import DriverRegistrationForm, RiderRegistrationForm, LoginForm, DriverVerificationForm
-from .models import Driver, Rider, CustomUser
+from .forms import DriverRegistrationForm, RiderRegistrationForm, LoginForm, DriverVerificationForm, TricycleForm
+from .models import Driver, Rider, CustomUser, Tricycle
 from apps.booking.forms import BookingForm
 from datetime import date
 from apps.booking.models import Booking
@@ -80,10 +80,15 @@ class RegisterPage(View):
                     date_hired=date.today(),
                     years_of_service=0
                 )
+                # Store pending driver id in session and redirect to tricycle registration (step 2)
+                pending_driver = Driver.objects.filter(user=user).first()
+                if pending_driver:
+                    request.session['pending_driver_id'] = pending_driver.id
+                    return redirect('user:tricycle_register')
             else:
                 Rider.objects.create(user=user)
-
-            messages.success(request, f"{user_type.capitalize()} registration successful! Please log in.")
+            
+            messages.success(request, f"{user_type.capitalize()} registration successful!")
             return redirect('user:landing')
 
         return render(request, self.template_name, {'form': form, 'user_type': user_type})
@@ -114,6 +119,58 @@ class DriverDashboard(View):
             'active_booking': active_booking,
         }
         return render(request, self.template_name, context)
+
+
+class TricycleRegister(View):
+    template_name = 'user/tricycle_register.html'
+
+    def get(self, request):
+        pending_id = request.session.get('pending_driver_id')
+        if not pending_id:
+            messages.error(request, 'No pending driver found. Please complete the first step.')
+            return redirect('user:register')
+
+        form = TricycleForm()
+        return render(request, self.template_name, {'form': form, 'step': 2})
+
+    def post(self, request):
+        pending_id = request.session.get('pending_driver_id')
+        if not pending_id:
+            messages.error(request, 'Session expired or invalid. Please start registration again.')
+            return redirect('user:register')
+
+        form = TricycleForm(request.POST)
+        if form.is_valid():
+            trike = form.save(commit=False)
+            try:
+                driver = Driver.objects.get(id=pending_id)
+            except Driver.DoesNotExist:
+                messages.error(request, 'Driver profile missing. Please contact support.')
+                return redirect('user:register')
+
+            trike.driver = driver
+            trike.save()
+
+            # set driver status pending_approval
+            driver.status = 'pending_approval'
+            driver.save(update_fields=['status'])
+
+            # Notify admins via email if configured
+            try:
+                from django.core.mail import mail_admins
+                subject = f'New tricycle registration for driver {driver.user.username}'
+                message = f'Driver ID: {driver.id}\nTricycle: {trike.plate_number} ({trike.color})\nPlease review and approve.'
+                mail_admins(subject, message)
+            except Exception:
+                # if mail not configured, still continue
+                pass
+
+            # Clear session and show confirmation
+            request.session.pop('pending_driver_id', None)
+            messages.success(request, 'Your application is under review.')
+            return render(request, 'user/registration_complete.html')
+        else:
+            return render(request, self.template_name, {'form': form, 'step': 2})
 
 @require_POST
 def accept_ride(request, booking_id):
