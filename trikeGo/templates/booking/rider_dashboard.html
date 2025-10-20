@@ -22,7 +22,28 @@
     </div>
 
     <div class="container">
-        <div class="sidebar">
+        <div class="sidebar" aria-expanded="false">
+            <div class="nav-bar">
+                <div class="nav-top">
+                    <div class="brand">TrikeGo</div>
+                </div>
+                <div class="nav-icons">
+                    <a class="nav-icon" title="Profile" href="#">
+                        <img src="{% static 'user/images/account_icon.png' %}" alt="Profile">
+                    </a>
+                    <a class="nav-icon" title="Rides" href="#">
+                        <img src="{% static 'user/images/tricycle_icon.png' %}" alt="Rides">
+                    </a>
+                    <a class="nav-icon" title="Payments" href="#">
+                        <img src="{% static 'user/images/card_icon.png' %}" alt="Payments">
+                    </a>
+                    <a class="nav-icon" title="Support" href="#">
+                        <img src="{% static 'user/images/support_icon.png' %}" alt="Support">
+                    </a>
+                </div>
+            </div>
+
+            <div class="sidebar-content">
             <div class="dashboard-profile-card">
                 <h2>Welcome, {{ user.first_name }} {{ user.last_name }}!</h2>
                 <p>Rider ID: {{ user.username }}</p>
@@ -81,6 +102,7 @@
                     <a href="#" class="btn btn-warning">Support</a>
                 </div>
             </div>
+            </div>
         </div>
 
         <div class="dashboard-booking-card">
@@ -109,18 +131,42 @@
         </div>
     </div>
 
+    <!-- Driver info card shown when a booking is accepted -->
+    <div id="driver-info-card" class="driver-info-card" style="display:none;" aria-hidden="true">
+        <div class="driver-card-inner">
+            <div class="driver-avatar"></div>
+            <div class="driver-details">
+                <div class="driver-name">Driver Name</div>
+                <div class="driver-meta">
+                    <span class="driver-plate">Plate: -</span>
+                    <span class="driver-color">Color: -</span>
+                </div>
+                <div class="driver-fare">Fare: PHP100</div>
+
+                <!-- Extra info: ETA, pickup and destination shown in the card -->
+                <div class="driver-info-extra">
+                    <div class="info-eta"><strong>ETA:</strong> <span id="card-eta">--</span></div>
+                    <div class="info-pickup"><strong>Pickup:</strong> <span id="card-pickup">--</span></div>
+                    <div class="info-destination"><strong>Destination:</strong> <span id="card-dest">--</span></div>
+                </div>
+            </div>
+            <div class="driver-actions">
+                <button id="msg-driver-btn" class="btn btn-primary">Chat</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
         const ORS_API_KEY = '{{ settings.OPENROUTESERVICE_API_KEY }}' || '5b3ce3597851110001cf62488c26abeb';
         
-        // Real-time tracking variables
-        let trackingInterval = null;
-        let driverMarker = null;
-        let riderMarker = null;
-        let pickupMarker = null;
-        let destinationMarker = null;
-        let driverToRiderRouteLayer = null;
-        let riderToDestRouteLayer = null;
+    // Real-time tracking variables
+    let trackingInterval = null;
+    let driverMarker = null;
+    let pickupMarker = null;
+    let destinationMarker = null;
+    let driverToRiderRouteLayer = null;
+    let riderToDestRouteLayer = null;
         
         class ORSAutocomplete {
             constructor(inputId, resultsId, latFieldId, lonFieldId, onSelectCallback) {
@@ -224,16 +270,13 @@
                 maxZoom: 19
             }).addTo(map);
 
-            // Default to user's current GPS if available
+            // Default to user's current GPS if available - do not create a separate rider marker (simplified UI)
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
                         const { latitude, longitude } = pos.coords;
                         map.setView([latitude, longitude], 15);
-                        if (!riderMarker) {
-                            const riderIcon = L.divIcon({ className: 'rider-marker', html: '<div class="marker-inner"></div>', iconSize: [24, 24] });
-                            riderMarker = L.marker([latitude, longitude], { icon: riderIcon }).addTo(map).bindPopup('Your location');
-                        }
+                        // intentionally do not add a rider marker; only driver/pickup/destination are shown
                     },
                     () => {},
                     { enableHighAccuracy: true, timeout: 5000 }
@@ -272,6 +315,13 @@
 
             pickupInput.addEventListener('focus', () => activeInput = 'pickup');
             destInput.addEventListener('focus', () => activeInput = 'destination');
+
+            // If the rider already has a booking (any .booking-item present), hide the Book a Ride panel.
+            // This enforces "one booking at a time" on the client UI immediately.
+            const anyBookingEl = document.querySelector('.booking-item');
+            if (anyBookingEl) {
+                document.body.classList.add('booking-active');
+            }
 
             map.on('click', async (e) => {
                 if (!activeInput) return;
@@ -388,19 +438,7 @@
                     }
                 }
                 
-                if (hasRider) {
-                    const riderLatLng = [rLat, rLon];
-                    if (!riderMarker) {
-                        const riderIcon = L.divIcon({
-                            className: 'rider-marker',
-                            html: '<div style="background: #ffc107; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
-                            iconSize: [24, 24]
-                        });
-                        riderMarker = L.marker(riderLatLng, { icon: riderIcon }).addTo(map).bindPopup('You');
-                    } else {
-                        riderMarker.setLatLng(riderLatLng);
-                    }
-                }
+                // We intentionally do not show a rider location marker to simplify the UI.
                 
                 if (hasPickup) {
                     const pickupLatLng = [pLat, pLon];
@@ -517,6 +555,68 @@
                 const indicator = document.getElementById('status-indicator');
                 indicator.style.backgroundColor = '#28a745';
                 indicator.classList.add('pulse');
+
+                // Show driver info card when booking is accepted or on the way
+                try {
+                    const infoCard = document.getElementById('driver-info-card');
+                    const shouldShow = (info.booking_status === 'accepted' || info.booking_status === 'on_the_way' || info.booking_status === 'started');
+
+                    // Toggle body class so the booking panel is hidden when a booking is active
+                    if (shouldShow) {
+                        document.body.classList.add('booking-active');
+                    } else {
+                        document.body.classList.remove('booking-active');
+                    }
+
+                    if (shouldShow) {
+                        const driverName = info.driver_name || info.driver_full_name || 'Charlie Kirk';
+                        const tricycle = info.tricycle || {};
+                        const driverPlate = info.driver_plate || tricycle.plate_number || info.plate_number || 'AB 1234';
+                        const driverColor = tricycle.color || info.driver_color || info.color || 'Red';
+                        const tricycleImage = tricycle.image_url || info.tricycle_image_url || info.image_url || null;
+
+                        infoCard.querySelector('.driver-name').textContent = driverName;
+                        infoCard.querySelector('.driver-plate').textContent = `Plate: ${driverPlate}`;
+                        infoCard.querySelector('.driver-color').textContent = `Color: ${driverColor}`;
+                        infoCard.querySelector('.driver-fare').textContent = `Fare: PHP100`;
+
+                        // Set avatar image if available
+                        const avatar = infoCard.querySelector('.driver-avatar');
+                        if (tricycleImage) {
+                            avatar.style.backgroundImage = `url('${tricycleImage}')`;
+                            avatar.style.backgroundSize = 'cover';
+                            avatar.style.backgroundPosition = 'center';
+                        } else {
+                            avatar.style.backgroundImage = '';
+                        }
+
+                        // Populate ETA / pickup / destination into the card
+                        const cardEta = document.getElementById('card-eta');
+                        const cardPickup = document.getElementById('card-pickup');
+                        const cardDest = document.getElementById('card-dest');
+                        cardEta.textContent = (etaMin != null) ? `${etaMin} min` : '--';
+                        // Use human-friendly pickup/destination if present in the booking list on the sidebar, else fall back to coordinates
+                        const sidebarBookingEl = document.querySelector('.booking-item[data-booking-id]');
+                        if (sidebarBookingEl) {
+                            const pickupText = sidebarBookingEl.querySelector('strong')?.textContent?.trim() || `${pLat.toFixed(5)}, ${pLon.toFixed(5)}`;
+                            const destText = sidebarBookingEl.childNodes[2]?.textContent?.trim() || `${xLat.toFixed(5)}, ${xLon.toFixed(5)}`;
+                            cardPickup.textContent = pickupText;
+                            // destText may include arrow and other text; ensure we only include the destination address
+                            cardDest.textContent = destText;
+                        } else {
+                            cardPickup.textContent = `${pLat.toFixed(5)}, ${pLon.toFixed(5)}`;
+                            cardDest.textContent = `${xLat.toFixed(5)}, ${xLon.toFixed(5)}`;
+                        }
+
+                        infoCard.style.display = 'block';
+                        infoCard.setAttribute('aria-hidden', 'false');
+                    } else {
+                        infoCard.style.display = 'none';
+                        infoCard.setAttribute('aria-hidden', 'true');
+                    }
+                } catch (err) {
+                    console.warn('Driver info card update failed', err);
+                }
             } catch (e) {
                 console.error('Tracking error', e);
                 document.getElementById('status-indicator').style.backgroundColor = '#dc3545';
