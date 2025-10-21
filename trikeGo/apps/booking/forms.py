@@ -41,22 +41,23 @@ class BookingForm(forms.ModelForm):
         dest_lat = cleaned_data.get('destination_latitude')
         dest_lon = cleaned_data.get('destination_longitude')
         
-        # Check if addresses are identical
-        if pickup and destination and pickup == destination:
-            raise forms.ValidationError('Pickup and destination must be different locations.')
-        
-        # Check if coordinates are too close (less than 50 meters)
+        # Prefer coordinate-based comparison: if coordinates are provided, use distance to decide.
         if all([pickup_lat, pickup_lon, dest_lat, dest_lon]):
             distance = self._calculate_distance(
                 float(pickup_lat), float(pickup_lon),
                 float(dest_lat), float(dest_lon)
             )
-            
-            if distance < 50:  # Less than 50 meters
+
+            # If coordinates are very close, reject. Otherwise allow even if textual addresses look identical
+            if distance < 20:  # Less than 20 meters (reduced threshold for tricycle-scale trips)
                 raise forms.ValidationError(
                     f'Pickup and destination are too close ({distance:.0f}m apart). '
                     'Please select locations at least 50 meters apart.'
                 )
+        else:
+            # Fallback: if coordinates aren't available, fall back to textual equality check
+            if pickup and destination and pickup.strip() and destination.strip() and pickup.strip() == destination.strip():
+                raise forms.ValidationError('Pickup and destination must be different locations.')
         
         return cleaned_data
     

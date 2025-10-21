@@ -57,7 +57,9 @@
         {% if messages %}
           <ul class="messages-list">
             {% for message in messages %}
-              <li class="message-item">{{ message }}</li>
+              {% if message.level >= 40 %}
+                <li class="message-item">{{ message }}</li>
+              {% endif %}
             {% endfor %}
           </ul>
         {% endif %}
