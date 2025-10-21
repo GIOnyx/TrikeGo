@@ -78,12 +78,18 @@
                 {% if active_bookings %}
                     <ul class="booking-list">
                         {% for booking in active_bookings %}
-                            <li class="booking-item" data-booking-id="{{ booking.id }}">
+                            <li class="booking-item" data-booking-id="{{ booking.id }}" {% if booking.driver %}data-booking-driver="{{ booking.driver.id }}"{% endif %}>
                                 <strong>{{ booking.pickup_address }}</strong> → {{ booking.destination_address }}<br>
                                 <small>Status: <span class="booking-status">{{ booking.get_status_display }}</span></small><br>
                                 <small>Booked at: {{ booking.booking_time|date:"M d, Y H:i" }}</small>
                                 {% if booking.estimated_arrival %}
                                 <br><small>Est. Arrival: {{ booking.estimated_arrival|date:"H:i" }}</small>
+                                {% endif %}
+                                {% if booking.status == 'pending' %}
+                                <form method="POST" action="{% url 'user:cancel_booking' booking.id %}" style="display:inline;margin-top:8px;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-danger small" >Cancel Booking</button>
+                                </form>
                                 {% endif %}
                             </li>
                         {% endfor %}
@@ -156,6 +162,26 @@
         </div>
     </div>
 
+    <!-- Booking preview card: shows booking summary even if no driver has accepted yet -->
+    <div id="booking-preview-card" class="driver-info-card" style="display:none;" aria-hidden="true">
+        <div class="driver-card-inner">
+            <div class="driver-details">
+                <div class="driver-name">Booking Preview</div>
+                <div class="driver-meta">
+                    <div><strong>Pickup:</strong> <span id="preview-pickup">--</span></div>
+                    <div><strong>Destination:</strong> <span id="preview-dest">--</span></div>
+                </div>
+                <div class="driver-fare">Estimated Fare: <span id="preview-fare">--</span></div>
+            </div>
+            <div class="driver-actions">
+                <form method="POST" id="preview-cancel-form" action="#">
+                    {% csrf_token %}
+                    <button id="preview-cancel-btn" type="submit" class="btn btn-danger" style="color: #fff;">Cancel Booking</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
         const ORS_API_KEY = '{{ settings.OPENROUTESERVICE_API_KEY }}' || '5b3ce3597851110001cf62488c26abeb';
@@ -221,7 +247,20 @@
                     const url = `https://api.openrouteservice.org/geocode/search?${params.toString()}`;
                     const response = await fetch(url);
                     const data = await response.json();
-                    this.displayResults(data.features || []);
+                    let features = data.features || [];
+                    // If map center is available, compute distance for each feature and sort by proximity
+                    try {
+                        const center = map.getCenter();
+                        features.forEach(f => {
+                            const [lon, lat] = f.geometry.coordinates;
+                            const d = map.distance(center, L.latLng(lat, lon));
+                            f.__distance = d; // meters
+                        });
+                        features.sort((a, b) => (a.__distance || 0) - (b.__distance || 0));
+                    } catch (err) {
+                        // map may not be initialized; ignore
+                    }
+                    this.displayResults(features);
                 } catch (error) {
                     console.error('Autocomplete API error:', error);
                     this.results.innerHTML = '<div class="loading">Error loading results</div>';
@@ -239,7 +278,12 @@
                     item.className = 'autocomplete-item';
                     const props = feature.properties || {};
                     const name = props.label || props.name || 'Unknown';
-                    item.innerHTML = `<strong>${name}</strong>`;
+                    let distanceText = '';
+                    if (feature.__distance != null) {
+                        const meters = Math.round(feature.__distance);
+                        distanceText = ` <small style="color:#999;margin-left:8px;">(${meters}m)</small>`;
+                    }
+                    item.innerHTML = `<strong>${name}</strong>${distanceText}`;
                     item.addEventListener('click', () => this.selectResult(feature));
                     this.results.appendChild(item);
                 });
@@ -321,6 +365,42 @@
             const anyBookingEl = document.querySelector('.booking-item');
             if (anyBookingEl) {
                 document.body.classList.add('booking-active');
+            }
+
+            // Booking preview: show a preview card for the first pending booking (no driver assigned yet)
+            const bookingItems = document.querySelectorAll('.booking-item');
+            if (bookingItems.length > 0) {
+                let previewBooking = null;
+                bookingItems.forEach(el => {
+                    const status = (el.querySelector('.booking-status')?.textContent || '').trim().toLowerCase();
+                    // only consider pending bookings (no driver assigned yet)
+                    if (!previewBooking && (status === 'pending' || status === 'pending driver assignment' || !el.dataset.bookingDriver)) {
+                        // ensure we don't pick bookings that are already accepted/on the way/started
+                        if (['accepted', 'on_the_way', 'started'].includes(status)) return;
+                        previewBooking = el;
+                    }
+                });
+
+                if (previewBooking) {
+                    const bookingId = previewBooking.dataset.bookingId;
+                    const pickupText = previewBooking.querySelector('strong')?.textContent?.trim() || '--';
+                    const destText = previewBooking.childNodes[2]?.textContent?.trim() || '--';
+
+                    const previewCard = document.getElementById('booking-preview-card');
+                    document.getElementById('preview-pickup').textContent = pickupText;
+                    document.getElementById('preview-dest').textContent = destText;
+                    // Simple fare estimate based on distance could be calculated server-side; show placeholder
+                    document.getElementById('preview-fare').textContent = 'Estimating...';
+
+                    // Wire cancel form action to the cancel endpoint for this booking
+                    const previewForm = document.getElementById('preview-cancel-form');
+                    previewForm.action = `{% url 'user:cancel_booking' 0 %}`.replace('/0/', `/${bookingId}/`);
+
+                    previewCard.style.display = 'block';
+                    previewCard.setAttribute('aria-hidden', 'false');
+                    // hide booking panel to avoid duplicate booking when preview exists
+                    document.body.classList.add('booking-active');
+                }
             }
 
             map.on('click', async (e) => {
@@ -613,6 +693,15 @@
                     } else {
                         infoCard.style.display = 'none';
                         infoCard.setAttribute('aria-hidden', 'true');
+                    }
+                    // If booking has been accepted or is on the way, hide the booking preview card
+                    const previewCard = document.getElementById('booking-preview-card');
+                    const bookingAccepted = (info.booking_status === 'accepted' || info.booking_status === 'on_the_way' || info.booking_status === 'started');
+                    if (previewCard) {
+                        if (bookingAccepted) {
+                            previewCard.style.display = 'none';
+                            previewCard.setAttribute('aria-hidden', 'true');
+                        }
                     }
                 } catch (err) {
                     console.warn('Driver info card update failed', err);

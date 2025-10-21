@@ -90,6 +90,13 @@ body {
   pointer-events: auto;
 }
 
+/* When the sidebar content expands, allow scrolling if content exceeds viewport height */
+.sidebar .sidebar-content {
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  padding-right: 8px; /* space for scrollbar */
+}
+
 .sidebar .sidebar-content .dashboard-profile-card,
 .sidebar .sidebar-content .dashboard-loyaltypoints-card,
 .sidebar .sidebar-content .dashboard-tracking-card,
@@ -149,6 +156,7 @@ body {
 .btn-secondary { background-color: #9b59b6; }
 .btn-success { background-color: #2ecc71; }
 .btn-warning { background-color: #f39c12; }
+.btn-danger { background-color: #e74c3c; }
 
 
 .autocomplete-container {

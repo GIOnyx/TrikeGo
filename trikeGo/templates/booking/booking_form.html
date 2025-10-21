@@ -52,7 +52,16 @@
             });
         }
         async search(query) {
-            const params = new URLSearchParams({ api_key: ORS_API_KEY, text: query, size: 8, 'boundary.country': 'PH' });
+            // Request more address-level results and increase size for improved sensitivity.
+            // If a focus point is available we could add 'focus' to bias results; omitted here for privacy.
+            const params = new URLSearchParams({
+                api_key: ORS_API_KEY,
+                text: query,
+                size: 12,
+                'boundary.country': 'PH',
+                // Prefer address-level candidates when possible
+                layers: 'address'
+            });
             const url = `https://api.openrouteservice.org/geocode/search?${params.toString()}`;
             const r = await fetch(url);
             const data = await r.json();
@@ -70,7 +79,19 @@
         select(feature) {
             const [lon, lat] = feature.geometry.coordinates;
             const props = feature.properties || {};
-            this.input.value = props.label || props.name || `${lat}, ${lon}`;
+            // Build a more specific label: prefer label, fall back to name + street, then coords
+            let label = props.label || props.name || '';
+            if (!label && props.street) label = `${props.street}`;
+            if (!label) label = `${lat}, ${lon}`;
+
+            // If the input currently equals the label but coordinates differ, append short coords to disambiguate
+            const current = this.input.value || '';
+            if (current.trim() === label.trim()) {
+                // append short coordinates
+                label = `${label} (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
+            }
+
+            this.input.value = label;
             this.hiddenLat.value = lat;
             this.hiddenLon.value = lon;
             this.results.innerHTML = '';

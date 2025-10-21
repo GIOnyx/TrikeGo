@@ -30,9 +30,9 @@ class Driver(models.Model):
         ('Offline', 'Offline'),
         ('Online', 'Online'),
         ('In_trip', 'In trip'),
-        ('pending_approval', 'Pending Approval'),
     )
-    # longest choice value is 'pending_approval' (16 chars) so set max_length accordingly
+    # status only represents availability/engagement. Pending approval is tracked with `is_verified`.
+    # longest choice value is 'In_trip' (7 chars) so max_length can be small but keep 16 for safety.
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default='Offline')
     is_verified = models.BooleanField(default=False)
     current_latitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)

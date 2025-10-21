@@ -151,9 +151,9 @@ class TricycleRegister(View):
             trike.driver = driver
             trike.save()
 
-            # set driver status pending_approval
-            driver.status = 'pending_approval'
-            driver.save(update_fields=['status'])
+            # mark driver as not verified; approval is handled via admin verification
+            driver.is_verified = False
+            driver.save(update_fields=['is_verified'])
 
             # Notify admins via email if configured
             try:
@@ -268,6 +268,30 @@ def cancel_accepted_booking(request, booking_id):
         messages.error(request, "You cannot cancel this booking anymore.")
 
     return redirect('user:driver_active_books')
+
+
+@require_POST
+def cancel_booking(request, booking_id):
+    """Allow riders to cancel their own bookings (pending or accepted)."""
+    if not request.user.is_authenticated or request.user.trikego_user != 'R':
+        return redirect('user:landing')
+
+    booking = get_object_or_404(Booking, id=booking_id)
+    if booking.rider != request.user:
+        messages.error(request, 'Permission denied.')
+        return redirect('user:rider_dashboard')
+
+    # Only allow cancelling of pending bookings (rider cannot cancel once trip is accepted/on the way/started)
+    if booking.status == 'pending':
+        booking.status = 'cancelled_by_rider'
+        booking.driver = None
+        booking.start_time = None
+        booking.save()
+        messages.success(request, 'Your booking has been cancelled.')
+    else:
+        messages.error(request, 'This booking cannot be cancelled at this stage.')
+
+    return redirect('user:rider_dashboard')
 
 
 @require_POST
