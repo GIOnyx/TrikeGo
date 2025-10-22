@@ -304,9 +304,18 @@
                         if (destMarker) map.removeLayer(destMarker);
                         if (driverMarker) map.removeLayer(driverMarker);
 
-                        const driverLatLng = [routeInfo.driver_lat, routeInfo.driver_lon];
-                        const driverIcon = L.divIcon({ className: 'driver-marker', html: '<div class="marker-inner"></div>', iconSize: [30, 30] });
-                        driverMarker = L.marker(driverLatLng, { icon: driverIcon }).addTo(map).bindPopup('Your Location');
+                        // Only create driver marker if driver coordinates are available and numeric
+                        const driverLatVal = routeInfo.driver_lat;
+                        const driverLonVal = routeInfo.driver_lon;
+                        const hasDriverCoords = (driverLatVal != null && driverLonVal != null && Number.isFinite(Number(driverLatVal)) && Number.isFinite(Number(driverLonVal)));
+                        if (hasDriverCoords) {
+                            const driverLatLng = [Number(driverLatVal), Number(driverLonVal)];
+                            const driverIcon = L.divIcon({ className: 'driver-marker', html: '<div class="marker-inner"></div>', iconSize: [30, 30] });
+                            driverMarker = L.marker(driverLatLng, { icon: driverIcon }).addTo(map).bindPopup('Your Location');
+                        } else {
+                            // No driver location available for preview — inform the user and proceed with pickup->destination only
+                            console.warn('Driver coordinates not available for preview:', driverLatVal, driverLonVal);
+                        }
 
                         const pickupLatLng = [routeInfo.pickup_lat, routeInfo.pickup_lon];
                         const destLatLng = [routeInfo.destination_lat, routeInfo.destination_lon];
@@ -315,12 +324,22 @@
                         pickupMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(map).bindPopup('Pickup Location');
                         destMarker = L.marker(destLatLng, { icon: destIcon }).addTo(map).bindPopup('Destination');
 
-                        const dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${routeInfo.driver_lon},${routeInfo.driver_lat}&end=${routeInfo.pickup_lon},${routeInfo.pickup_lat}`;
+                        // Only request driver->pickup route when we have driver coords
+                        let dtUrl = null;
+                        if (hasDriverCoords) {
+                            dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${routeInfo.driver_lon},${routeInfo.driver_lat}&end=${routeInfo.pickup_lon},${routeInfo.pickup_lat}`;
+                        }
                         const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${routeInfo.pickup_lon},${routeInfo.pickup_lat}&end=${routeInfo.destination_lon},${routeInfo.destination_lat}`;
-                        const [dtResponse, rdResponse] = await Promise.all([fetch(dtUrl), fetch(rdUrl)]);
-                        const [dtResult, rdResult] = await Promise.all([dtResponse.json(), rdResponse.json()]);
+                        // Fetch rd always; fetch dt only if dtUrl present
+                        const rdResponse = await fetch(rdUrl);
+                        const rdResult = await rdResponse.json();
+                        let dtResult = null;
+                        if (dtUrl) {
+                            const dtResponse = await fetch(dtUrl);
+                            dtResult = await dtResponse.json();
+                        }
                         
-                        if (dtResult.features && dtResult.features.length > 0) {
+                        if (dtResult && dtResult.features && dtResult.features.length > 0) {
                             const dtRoute = dtResult.features[0];
                             driverToRiderRouteLayer = L.geoJSON(dtRoute, { style: { color: '#28a745', weight: 5, opacity: 0.8 } }).addTo(map);
                         }
@@ -340,10 +359,19 @@
                         // Show ETA to pickup in preview panel
                         const etaLabel = document.getElementById('eta-label');
                         const etaValue = document.getElementById('eta-value');
-                        if (etaLabel && etaValue && dtResult.features?.[0]?.properties?.segments?.[0]) {
-                            etaLabel.textContent = 'Time to Pick-up:';
-                            const seg = dtResult.features[0].properties.segments[0];
-                            etaValue.textContent = `${Math.ceil(seg.duration / 60)} min`;
+                        if (etaLabel && etaValue) {
+                            if (dtResult && dtResult.features?.[0]?.properties?.segments?.[0]) {
+                                etaLabel.textContent = 'Time to Pick-up:';
+                                const seg = dtResult.features[0].properties.segments[0];
+                                etaValue.textContent = `${Math.ceil(seg.duration / 60)} min`;
+                            } else if (routeInfo.driver_to_pickup_km != null) {
+                                // Use server-provided estimated distance as fallback (no ETA seconds available)
+                                etaLabel.textContent = 'Est. Dist to Pickup:';
+                                etaValue.textContent = `${routeInfo.driver_to_pickup_km} km`;
+                            } else {
+                                etaLabel.textContent = 'Time to Pick-up:';
+                                etaValue.textContent = '--';
+                            }
                         }
 
                         routeDetailsContainer.innerHTML = 'Preview loaded.';

@@ -472,13 +472,22 @@ def get_route_info(request, booking_id):
     elif request.user.trikego_user == 'R':
         if request.user != booking.rider:
             return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
-        if not booking.driver:
-            return JsonResponse({'status': 'error', 'message': 'No driver assigned yet.'}, status=404)
+        # Allow riders to preview the route (pickup -> destination) even when no driver has
+        # been assigned yet. In that case, we will compute a pickup->destination route
+        # and return it with driver coordinates set to null so the frontend draws only
+        # the preview route. If a driver exists, return driver info as before.
         try:
-            driver_profile = Driver.objects.get(user=booking.driver)
             rider_profile = Rider.objects.get(user=request.user)
-        except (Driver.DoesNotExist, Rider.DoesNotExist):
-            return JsonResponse({'status': 'error', 'message': 'Profile not found for driver or rider.'}, status=404)
+        except Rider.DoesNotExist:
+            return JsonResponse({'status': 'error', 'message': 'Rider profile not found.'}, status=404)
+
+        driver_profile = None
+        if booking.driver:
+            try:
+                driver_profile = Driver.objects.get(user=booking.driver)
+            except Driver.DoesNotExist:
+                # If driver record is missing, continue without driver info
+                driver_profile = None
     else:
         return JsonResponse({'status': 'error', 'message': 'Unauthorized.'}, status=403)
     # Try to include tricycle details if available. The Tricycle model or relation
@@ -514,18 +523,103 @@ def get_route_info(request, booking_id):
         except Exception:
             tricycle_data = None
 
+    # If there's no driver assigned (rider preview), compute pickup->destination route
+    route_payload = None
+    try:
+        if not booking.driver:
+            routing_service = RoutingService()
+            # Calculate route from pickup to destination (coords expected as lon,lat)
+            start = (float(booking.pickup_longitude), float(booking.pickup_latitude))
+            end = (float(booking.destination_longitude), float(booking.destination_latitude))
+            route_info = routing_service.calculate_route(start, end)
+            if route_info:
+                route_payload = {
+                    'route_data': route_info.get('route_data'),
+                    'distance': route_info.get('distance'),
+                    'duration': route_info.get('duration'),
+                    'too_close': route_info.get('too_close', False)
+                }
+        else:
+            # If a driver exists, the frontend will fetch driver/pickup and pickup/destination as needed
+            route_payload = None
+    except Exception as e:
+        route_payload = None
+    # Compute distances for convenience to display in the UI
+    pickup_to_dest_km = None
+    driver_to_pickup_km = None
+    if route_payload:
+        try:
+            pickup_to_dest_km = route_payload.get('distance')
+        except Exception:
+            pickup_to_dest_km = None
+    else:
+        # If driver exists and routing can compute, try to compute distances
+        try:
+            routing_service = RoutingService()
+            if booking.pickup_latitude and booking.pickup_longitude and booking.destination_latitude and booking.destination_longitude:
+                pd_start = (float(booking.pickup_longitude), float(booking.pickup_latitude))
+                pd_end = (float(booking.destination_longitude), float(booking.destination_latitude))
+                pd_info = routing_service.calculate_route(pd_start, pd_end)
+                if pd_info:
+                    pickup_to_dest_km = pd_info.get('distance')
+            if booking.driver and driver_profile and driver_profile.current_latitude and driver_profile.current_longitude and booking.pickup_latitude and booking.pickup_longitude:
+                dp_start = (float(driver_profile.current_longitude), float(driver_profile.current_latitude))
+                dp_end = (float(booking.pickup_longitude), float(booking.pickup_latitude))
+                dp_info = routing_service.calculate_route(dp_start, dp_end)
+                if dp_info:
+                    driver_to_pickup_km = dp_info.get('distance')
+        except Exception:
+            pass
+
+    # Driver/tricycle frontend-friendly details
+    driver_info = None
+    if driver_profile:
+        # If the Driver model doesn't have current coords, try to read the real-time
+        # DriverLocation (apps.booking.models.DriverLocation) as a fallback source.
+        try:
+            from apps.booking.models import DriverLocation as _DriverLocation
+            dl = _DriverLocation.objects.filter(driver=driver_profile.user).first()
+            if dl:
+                # Only set if missing on the driver_profile
+                if not driver_profile.current_latitude and getattr(dl, 'latitude', None) is not None:
+                    driver_profile.current_latitude = dl.latitude
+                if not driver_profile.current_longitude and getattr(dl, 'longitude', None) is not None:
+                    driver_profile.current_longitude = dl.longitude
+        except Exception:
+            # Booking app or DriverLocation may not be present; ignore and continue
+            pass
+        try:
+            driver_name = f"{driver_profile.user.first_name} {driver_profile.user.last_name}".strip() or driver_profile.user.username
+        except Exception:
+            driver_name = getattr(driver_profile.user, 'username', 'Driver')
+        driver_info = {
+            'id': getattr(driver_profile, 'id', None),
+            'name': driver_name,
+            'lat': driver_profile.current_latitude,
+            'lon': driver_profile.current_longitude,
+        }
+        # Try to attach tricycle info if not yet included
+        if tricycle_data:
+            driver_info['plate'] = tricycle_data.get('plate_number')
+            driver_info['color'] = tricycle_data.get('color')
+
     return JsonResponse({
         'status': 'success',
         'booking_status': booking.status,
-        'driver_lat': driver_profile.current_latitude,
-        'driver_lon': driver_profile.current_longitude,
-        'rider_lat': rider_profile.current_latitude,
-        'rider_lon': rider_profile.current_longitude,
+        'driver': driver_info,
+        'driver_lat': driver_profile.current_latitude if driver_profile else None,
+        'driver_lon': driver_profile.current_longitude if driver_profile else None,
+        'driver_name': driver_info.get('name') if driver_info else None,
+        'rider_lat': rider_profile.current_latitude if rider_profile else None,
+        'rider_lon': rider_profile.current_longitude if rider_profile else None,
         'pickup_lat': booking.pickup_latitude,
         'pickup_lon': booking.pickup_longitude,
         'destination_lat': booking.destination_latitude,
         'destination_lon': booking.destination_longitude,
         'tricycle': tricycle_data,
+        'route_payload': route_payload,
+        'pickup_to_destination_km': pickup_to_dest_km,
+        'driver_to_pickup_km': driver_to_pickup_km,
     })
 
 @login_required

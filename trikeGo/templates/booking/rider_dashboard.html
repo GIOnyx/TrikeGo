@@ -398,8 +398,23 @@
 
                     previewCard.style.display = 'block';
                     previewCard.setAttribute('aria-hidden', 'false');
+                    // Render a preview route (pickup -> destination) immediately for pending bookings
+                    // updateAll will fetch route_info and draw the pickup->destination route when available
+                    try {
+                        // don't start real-time tracking for preview — just draw the route once
+                        updateAll(bookingId, map);
+                    } catch (err) {
+                        console.warn('Failed to render booking preview route', err);
+                    }
                     // hide booking panel to avoid duplicate booking when preview exists
                     document.body.classList.add('booking-active');
+                    // As a fallback, directly hide the booking card element in case CSS isn't applied (cache/ordering)
+                    try {
+                        const bookingPanel = document.querySelector('.dashboard-booking-card');
+                        if (bookingPanel) bookingPanel.style.display = 'none';
+                    } catch (err) {
+                        console.warn('Could not hide booking panel element directly', err);
+                    }
                 }
             }
 
@@ -548,21 +563,32 @@
                     }
                 }
 
-                // Build route requests only if inputs exist
+                // Build route requests. Prefer server-provided payload for preview (when no driver)
                 let dtData = null, rdData = null;
-                if (hasDriver && hasPickup) {
-                    console.log('Fetching driver to pickup route...');
-                    const dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${dLon},${dLat}&end=${pLon},${pLat}`;
-                    const dtRes = await fetch(dtUrl);
-                    dtData = await dtRes.json();
-                    console.log('Driver to pickup route:', dtData);
-                }
-                if (hasPickup && hasDest) {
-                    console.log('Fetching pickup to destination route...');
-                    const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${pLon},${pLat}&end=${xLon},${xLat}`;
-                    const rdRes = await fetch(rdUrl);
-                    rdData = await rdRes.json();
-                    console.log('Pickup to destination route:', rdData);
+                // If the API returned a 'route_payload' (server-side calculated pickup->destination),
+                // use that to draw the preview route when no driver exists yet.
+                if (info.route_payload && !hasDriver) {
+                    try {
+                        rdData = info.route_payload.route_data;
+                        console.log('Using server-provided pickup->destination route payload');
+                    } catch (err) {
+                        console.warn('Invalid route_payload format', err);
+                    }
+                } else {
+                    if (hasDriver && hasPickup) {
+                        console.log('Fetching driver to pickup route...');
+                        const dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${dLon},${dLat}&end=${pLon},${pLat}`;
+                        const dtRes = await fetch(dtUrl);
+                        dtData = await dtRes.json();
+                        console.log('Driver to pickup route:', dtData);
+                    }
+                    if (hasPickup && hasDest) {
+                        console.log('Fetching pickup to destination route...');
+                        const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${pLon},${pLat}&end=${xLon},${xLat}`;
+                        const rdRes = await fetch(rdUrl);
+                        rdData = await rdRes.json();
+                        console.log('Pickup to destination route:', rdData);
+                    }
                 }
 
                 // Remove old routes
@@ -649,10 +675,11 @@
                     }
 
                     if (shouldShow) {
-                        const driverName = info.driver_name || info.driver_full_name || 'Charlie Kirk';
+                        const driverObj = info.driver || null;
+                        const driverName = (driverObj && driverObj.name) ? driverObj.name : (info.driver_name || info.driver_full_name || 'Driver');
                         const tricycle = info.tricycle || {};
-                        const driverPlate = info.driver_plate || tricycle.plate_number || info.plate_number || 'AB 1234';
-                        const driverColor = tricycle.color || info.driver_color || info.color || 'Red';
+                        const driverPlate = (driverObj && driverObj.plate) ? driverObj.plate : (info.driver_plate || tricycle.plate_number || info.plate_number || 'AB 1234');
+                        const driverColor = tricycle.color || info.driver_color || info.color || (driverObj && driverObj.color) || 'Red';
                         const tricycleImage = tricycle.image_url || info.tricycle_image_url || info.image_url || null;
 
                         infoCard.querySelector('.driver-name').textContent = driverName;
@@ -687,12 +714,38 @@
                             cardPickup.textContent = `${pLat.toFixed(5)}, ${pLon.toFixed(5)}`;
                             cardDest.textContent = `${xLat.toFixed(5)}, ${xLon.toFixed(5)}`;
                         }
-
+                        // Show distances provided by server if available
+                        try {
+                            if (info.pickup_to_destination_km != null) {
+                                const previewFare = document.getElementById('preview-fare');
+                                previewFare.textContent = `${info.pickup_to_destination_km} km`;
+                            }
+                            if (info.driver_to_pickup_km != null) {
+                                const distanceValue = document.getElementById('distance-value');
+                                distanceValue.textContent = `${info.driver_to_pickup_km} km`;
+                            }
+                        } catch (e) {
+                            // ignore
+                        }
                         infoCard.style.display = 'block';
                         infoCard.setAttribute('aria-hidden', 'false');
                     } else {
                         infoCard.style.display = 'none';
                         infoCard.setAttribute('aria-hidden', 'true');
+                    }
+                    // Ensure booking panel visibility follows bookingAccepted state
+                    try {
+                        const bookingPanel = document.querySelector('.dashboard-booking-card');
+                        if (bookingPanel) {
+                            if (bookingAccepted) {
+                                bookingPanel.style.display = 'none';
+                            } else {
+                                // remove inline style to allow CSS to manage display
+                                bookingPanel.style.display = '';
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('Could not toggle booking panel display', err);
                     }
                     // If booking has been accepted or is on the way, hide the booking preview card
                     const previewCard = document.getElementById('booking-preview-card');
