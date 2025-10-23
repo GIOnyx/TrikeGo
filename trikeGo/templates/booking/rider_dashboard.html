@@ -15,6 +15,11 @@
     </div>
 
     <div id="map"></div>
+    <!-- Route loader (small box) shown only on initial fetch -->
+    <div id="route-loader" class="route-loader hidden" aria-hidden="true">
+        <div class="spinner" role="status" aria-live="polite" aria-label="Fetching routes"></div>
+        <div class="route-loader-text">Fetching routes</div>
+    </div>
     <div class="map-legend" id="map-legend-rider" aria-hidden="false">
         <div class="legend-item"><span class="legend-dot driver"></span>Driver</div>
         <div class="legend-item"><span class="legend-dot pickup"></span>Pickup / Rider</div>
@@ -484,15 +489,22 @@
             }, 5000);
         }
 
+        // Only show loader during the initial route fetch
+        let initialRouteLoadDone = false;
         async function updateAll(bookingId, map) {
+            const loader = document.getElementById('route-loader');
             try {
+                // show loader only on first fetch
+                if (!initialRouteLoadDone && loader) { loader.classList.remove('hidden'); loader.setAttribute('aria-hidden', 'false'); }
                 const infoRes = await fetch(`/api/booking/${bookingId}/route_info/`);
                 if (!infoRes.ok) {
+                    if (!initialRouteLoadDone && loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden', 'true'); }
                     console.error('Failed to fetch route info:', infoRes.status);
                     return;
                 }
                 const info = await infoRes.json();
                 if (info.status !== 'success') {
+                    if (!initialRouteLoadDone && loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden', 'true'); }
                     console.error('Route info error:', info.message);
                     return;
                 }
@@ -762,7 +774,15 @@
             } catch (e) {
                 console.error('Tracking error', e);
                 document.getElementById('status-indicator').style.backgroundColor = '#dc3545';
+                if (loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden', 'true'); }
             }
+            // mark that initial load finished and hide loader (if present)
+            try {
+                if (!initialRouteLoadDone) {
+                    initialRouteLoadDone = true;
+                }
+                if (loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden', 'true'); }
+            } catch(err){}
         }
 
         function getCookie(name) {
