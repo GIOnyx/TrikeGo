@@ -7,6 +7,7 @@
     <title>Driver Dashboard - TrikeGo</title>
     <link rel="stylesheet" href="{% static 'user/css/driver_dashboard.css' %}" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <!-- styles moved to static/user/css/driver_dashboard.css -->
 </head>
 <body {% if active_booking %}data-active-booking-id="{{ active_booking.id }}"{% endif %}>
     <div class="header">
@@ -82,6 +83,11 @@
                     </div>
                 </div>
                 <div id="route-details">Click 'Review' on a ride to see the route details here.</div>
+                <!-- Inline loader for route fetches (small box) -->
+                <div id="driver-route-loader" class="route-loader hidden" aria-hidden="true">
+                    <div class="spinner" role="status" aria-live="polite" aria-label="Fetching routes"></div>
+                    <div class="route-loader-text">Fetching routes</div>
+                </div>
                 <div id="active-trip-eta" style="display:none; margin-top: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px;">
                     <p><strong id="eta-label">Time to Pick-up:</strong> <span id="eta-value">Calculating...</span></p>
                 </div>
@@ -91,7 +97,15 @@
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
+        // Ensure we only start one active booking display per booking id to avoid duplicate intervals
+        const _activeBookingDisplays = new Set();
+
         function startActiveBookingDisplay(bookingId, mapInstance) {
+            if (_activeBookingDisplays.has(bookingId)) {
+                console.log('Active booking display already started for', bookingId);
+                return;
+            }
+            _activeBookingDisplays.add(bookingId);
             const ORS_API_KEY = '{{ settings.OPENROUTESERVICE_API_KEY }}' || '5b3ce3597851110001cf62488c26abeb';
             const etaLabel = document.getElementById('eta-label');
             const etaValue = document.getElementById('eta-value');
@@ -110,11 +124,18 @@
             let activeDriverMarker = null;
             let activePickupMarker = null;
             let activeDestMarker = null;
+                // track initial loader for active bookings and per-review loads
+                let initialDriverRouteLoadDone = false;
+                const reviewLoadSeen = new Map(); // bookingId -> boolean
 
             async function refreshEtaAndRoute() {
-                try {
-                    const infoResponse = await fetch(`/api/booking/${bookingId}/route_info/`);
-                    const info = await infoResponse.json();
+        try {
+            const loader = document.getElementById('driver-route-loader');
+                    // only show on first refresh
+                    if (!initialDriverRouteLoadDone && loader) { loader.classList.remove('hidden'); loader.setAttribute('aria-hidden','false'); }
+            const infoResponse = await fetch(`/api/booking/${bookingId}/route_info/`);
+            const info = await infoResponse.json();
+                    if (!initialDriverRouteLoadDone && loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden','true'); }
                     if (info.status !== 'success') {
                         console.error('Route info error:', info.message);
                         return;
@@ -236,6 +257,13 @@
                     }
                 } catch (e) {
                     console.error('ETA refresh error', e);
+                } finally {
+                    // mark initial as done after first attempt and ensure loader hidden
+                    try {
+                        if (!initialDriverRouteLoadDone) initialDriverRouteLoadDone = true;
+                        const loader = document.getElementById('driver-route-loader');
+                        if (loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden','true'); }
+                    } catch (err) {}
                 }
             }
             refreshEtaAndRoute();
@@ -291,6 +319,10 @@
             reviewButtons.forEach(button => {
                 button.addEventListener('click', async function() {
                     const bookingId = this.dataset.bookingId;
+                    const loader = document.getElementById('driver-route-loader');
+                    // Only show loader for a review the first time we view that booking
+                    const seen = reviewLoadSeen.get(bookingId);
+                    if (!seen && loader) { loader.classList.remove('hidden'); loader.setAttribute('aria-hidden','false'); }
                     routeDetailsContainer.innerHTML = "Fetching route information...";
 
                     try {
@@ -393,6 +425,9 @@
                     } catch (error) {
                         console.error("ORS Routing error:", error);
                         routeDetailsContainer.innerHTML = `<p style="color: #dc3545;">Could not calculate the route. ${error.message}</p>`;
+                    } finally {
+                            if (!reviewLoadSeen.get(bookingId)) reviewLoadSeen.set(bookingId, true);
+                            if (loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden','true'); }
                     }
                 });
             });
