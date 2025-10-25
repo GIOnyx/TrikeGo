@@ -149,8 +149,126 @@
             if (navigator.geolocation) navigator.geolocation.getCurrentPosition((pos) => { window.map.setView([pos.coords.latitude, pos.coords.longitude], 15); }, () => {}, { enableHighAccuracy: true, timeout: 5000 });
         } catch (e) { console.warn('Leaflet/map init failed', e); }
 
-        try { new ORSAutocomplete('pickup_location_input', 'pickup-results', 'id_pickup_latitude', 'id_pickup_longitude', (lat, lon) => { try { window.map.setView([lat, lon], 16); } catch(e){} }); } catch(e){}
-        try { new ORSAutocomplete('destination_location_input', 'destination-results', 'id_destination_latitude', 'id_destination_longitude', (lat, lon) => { try { window.map.setView([lat, lon], 16); } catch(e){} }); } catch(e){}
+        // Keep track of the last focused booking input (so clicks on the map can still target it)
+        window._lastFocusedBookingInputId = null;
+        const bookingInputIds = ['pickup_location_input', 'destination_location_input'];
+        document.addEventListener('focusin', (ev) => {
+            try {
+                const id = ev.target && ev.target.id ? ev.target.id : null;
+                if (bookingInputIds.includes(id)) window._lastFocusedBookingInputId = id;
+            } catch(e) {}
+        });
+
+        // Helper functions to place/update temporary markers for inputs (when user selects an address or clicks map)
+        function setPickupInputMarker(lat, lon, label) {
+            try {
+                const latLng = [lat, lon];
+                if (!pickupMarker) {
+                    const pickupIcon = L.divIcon({ className: 'pickup-marker', html: '<div style="background: #ffc107; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [20,20] });
+                    pickupMarker = L.marker(latLng, { icon: pickupIcon }).addTo(window.map).bindPopup(label || 'Pickup');
+                } else {
+                    pickupMarker.setLatLng(latLng);
+                    if (pickupMarker.getPopup()) pickupMarker.getPopup().setContent(label || 'Pickup');
+                }
+                try { window.map.setView(latLng, 16); } catch(e){}
+            } catch(e) { console.warn('setPickupInputMarker failed', e); }
+        }
+
+        function setDestinationInputMarker(lat, lon, label) {
+            try {
+                const latLng = [lat, lon];
+                if (!destinationMarker) {
+                    const destIcon = L.divIcon({ className: 'dest-marker', html: '<div style="background: #007bff; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [20,20] });
+                    destinationMarker = L.marker(latLng, { icon: destIcon }).addTo(window.map).bindPopup(label || 'Destination');
+                } else {
+                    destinationMarker.setLatLng(latLng);
+                    if (destinationMarker.getPopup()) destinationMarker.getPopup().setContent(label || 'Destination');
+                }
+                try { window.map.setView(latLng, 16); } catch(e){}
+            } catch(e) { console.warn('setDestinationInputMarker failed', e); }
+        }
+
+        try { new ORSAutocomplete('pickup_location_input', 'pickup-results', 'id_pickup_latitude', 'id_pickup_longitude', (lat, lon) => { try { window.map.setView([lat, lon], 16); setPickupInputMarker(lat, lon); } catch(e){} }); } catch(e){}
+        try { new ORSAutocomplete('destination_location_input', 'destination-results', 'id_destination_latitude', 'id_destination_longitude', (lat, lon) => { try { window.map.setView([lat, lon], 16); setDestinationInputMarker(lat, lon); } catch(e){} }); } catch(e){}
+
+        // When hidden lat/lon fields are programmatically updated elsewhere, reflect them on the map.
+        try {
+            const hidPickupLat = document.getElementById('id_pickup_latitude');
+            const hidPickupLon = document.getElementById('id_pickup_longitude');
+            const hidDestLat = document.getElementById('id_destination_latitude');
+            const hidDestLon = document.getElementById('id_destination_longitude');
+            function tryPlacePickupFromHidden() {
+                try {
+                    const lat = parseFloat(hidPickupLat?.value);
+                    const lon = parseFloat(hidPickupLon?.value);
+                    if (!Number.isNaN(lat) && !Number.isNaN(lon)) setPickupInputMarker(lat, lon, document.getElementById('pickup_location_input')?.value || 'Pickup');
+                } catch(e){}
+            }
+            function tryPlaceDestFromHidden() {
+                try {
+                    const lat = parseFloat(hidDestLat?.value);
+                    const lon = parseFloat(hidDestLon?.value);
+                    if (!Number.isNaN(lat) && !Number.isNaN(lon)) setDestinationInputMarker(lat, lon, document.getElementById('destination_location_input')?.value || 'Destination');
+                } catch(e){}
+            }
+            if (hidPickupLat && hidPickupLon) {
+                hidPickupLat.addEventListener('change', tryPlacePickupFromHidden);
+                hidPickupLon.addEventListener('change', tryPlacePickupFromHidden);
+            }
+            if (hidDestLat && hidDestLon) {
+                hidDestLat.addEventListener('change', tryPlaceDestFromHidden);
+                hidDestLon.addEventListener('change', tryPlaceDestFromHidden);
+            }
+        } catch(e) {}
+
+        // Map click -> reverse geocode into focused booking input
+        try {
+            if (window.map) {
+                async function reverseGeocodeAndFill(lat, lon) {
+                    const key = ORS_API_KEY || (window.RIDER_DASH_CONFIG && window.RIDER_DASH_CONFIG.ORS_API_KEY) || '';
+                    if (!key) return null;
+                    const url = `https://api.openrouteservice.org/geocode/reverse?api_key=${encodeURIComponent(key)}&point.lat=${encodeURIComponent(lat)}&point.lon=${encodeURIComponent(lon)}&size=1`;
+                    try {
+                        const res = await fetch(url);
+                        if (!res.ok) return null;
+                        const data = await res.json();
+                        const feat = (data.features && data.features[0]) ? data.features[0] : null;
+                        const label = feat?.properties?.label || feat?.properties?.name || null;
+                        return label ? { label, props: feat.properties } : null;
+                    } catch (e) { console.warn('Reverse geocode failed', e); return null; }
+                }
+
+                window.map.on('click', async function(e) {
+                    try {
+                        // Prefer the element that was last focused in booking inputs (clicking the map itself moves focus away)
+                        const lastId = window._lastFocusedBookingInputId || null;
+                        const active = document.activeElement;
+                        const activeId = (active && (active.id || active.getAttribute('id'))) ? (active.id || active.getAttribute('id')) : null;
+                        const id = (activeId && ['pickup_location_input','destination_location_input'].includes(activeId)) ? activeId : lastId;
+                        if (!id) return;
+                        const lat = e.latlng.lat; const lon = e.latlng.lng;
+                        const result = await reverseGeocodeAndFill(lat, lon);
+                        const label = result?.label || `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+                        // fill visible input and hidden lat/lon fields
+                        const inputEl = document.getElementById(id);
+                        if (inputEl) inputEl.value = label;
+                        if (id === 'pickup_location_input') {
+                            const hLat = document.getElementById('id_pickup_latitude');
+                            const hLon = document.getElementById('id_pickup_longitude');
+                            if (hLat) hLat.value = lat; if (hLon) hLon.value = lon;
+                            // show marker
+                            setPickupInputMarker(lat, lon, label);
+                        } else if (id === 'destination_location_input') {
+                            const hLat = document.getElementById('id_destination_latitude');
+                            const hLon = document.getElementById('id_destination_longitude');
+                            if (hLat) hLat.value = lat; if (hLon) hLon.value = lon;
+                            // show marker
+                            setDestinationInputMarker(lat, lon, label);
+                        }
+                    } catch (err) { console.warn('Map click handler error', err); }
+                });
+            }
+        } catch (e) { /* non-critical */ }
     });
             // Booking / tracking variables and helpers
         let trackingInterval = null;
