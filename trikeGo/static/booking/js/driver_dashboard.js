@@ -22,9 +22,15 @@
         const etaValue = document.getElementById('eta-value');
         const etaSection = document.getElementById('active-trip-eta'); if (etaSection) etaSection.style.display = 'block';
 
-        let activeDriverToRiderRouteLayer = null; let activeRiderToDestRouteLayer = null;
-        let activeDriverMarker = null; let activePickupMarker = null; let activeDestMarker = null;
-        let initialDriverRouteLoadDone = false;
+    let activeDriverToRiderRouteLayer = null; let activeRiderToDestRouteLayer = null;
+    let activeDriverMarker = null; let activePickupMarker = null; let activeDestMarker = null;
+    let initialDriverRouteLoadDone = false;
+    // local per-display ORS cache & rate-limit guard
+    let _orsRateLimitedUntil = 0;
+    let _prevDriverToPickupCoords = null;
+    let _prevPickupToDestCoords = null;
+    let _lastDTData = null;
+    let _lastRDData = null;
 
         async function refreshEtaAndRoute() {
             try {
@@ -39,34 +45,59 @@
                 const pLat = Number(info.pickup_lat), pLon = Number(info.pickup_lon);
                 const xLat = Number(info.destination_lat), xLon = Number(info.destination_lon);
 
-                if (Number.isFinite(dLat) && Number.isFinite(dLon) && Number.isFinite(pLat) && Number.isFinite(pLon)) {
-                    const dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${dLon},${dLat}&end=${pLon},${pLat}`;
-                    const dtRes = await fetch(dtUrl); const dt = await dtRes.json();
-                    if (dt.features?.[0]?.properties?.segments?.[0]) {
-                        if (activeDriverToRiderRouteLayer) mapInstance.removeLayer(activeDriverToRiderRouteLayer);
-                        activeDriverToRiderRouteLayer = L.geoJSON(dt.features[0], { style: { color: '#28a745', weight: 5, opacity: 0.8 } }).addTo(mapInstance);
-                        try {
-                            const driverLatLng = [dLat, dLon]; const driverIcon = L.divIcon({ className: 'driver-marker', html: '<div class="marker-inner"></div>', iconSize: [30, 30] });
-                            if (activeDriverMarker) activeDriverMarker.setLatLng(driverLatLng); else activeDriverMarker = L.marker(driverLatLng, { icon: driverIcon }).addTo(mapInstance).bindPopup('Driver');
-                        } catch (err) { console.warn('Marker update failed', err); }
-                        if (dt.features[0].properties?.segments?.[0]) {
-                            const seg = dt.features[0].properties.segments[0]; if (etaValue) etaValue.textContent = `${Math.ceil(seg.duration / 60)} min`;
+                // Only call ORS if coords changed and not currently rate-limited
+                const now = Date.now();
+                const rateLimited = (_orsRateLimitedUntil && now < _orsRateLimitedUntil);
+                if (!rateLimited) {
+                    if (Number.isFinite(dLat) && Number.isFinite(dLon) && Number.isFinite(pLat) && Number.isFinite(pLon)) {
+                        const dpKey = `${dLat},${dLon}|${pLat},${pLon}`;
+                        let dt = null;
+                        if (dpKey !== _prevDriverToPickupCoords) {
+                            const dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${dLon},${dLat}&end=${pLon},${pLat}`;
+                            try {
+                                const dtRes = await fetch(dtUrl);
+                                if (dtRes.status === 429) { _orsRateLimitedUntil = now + 30000; console.warn('ORS rate limit detected (429)'); }
+                                else { dt = await dtRes.json(); _lastDTData = dt; _prevDriverToPickupCoords = dpKey; }
+                            } catch(e) { console.warn('Driver->pickup route fetch failed', e); }
+                        } else { dt = _lastDTData; }
+
+                        if (dt && dt.features?.[0]?.properties?.segments?.[0]) {
+                            if (activeDriverToRiderRouteLayer) mapInstance.removeLayer(activeDriverToRiderRouteLayer);
+                            activeDriverToRiderRouteLayer = L.geoJSON(dt.features[0], { style: { color: '#28a745', weight: 5, opacity: 0.8 } }).addTo(mapInstance);
+                            try {
+                                const driverLatLng = [dLat, dLon]; const driverIcon = L.divIcon({ className: 'driver-marker', html: '<div class="marker-inner"></div>', iconSize: [30, 30] });
+                                if (activeDriverMarker) activeDriverMarker.setLatLng(driverLatLng); else activeDriverMarker = L.marker(driverLatLng, { icon: driverIcon }).addTo(mapInstance).bindPopup('Driver');
+                            } catch (err) { console.warn('Marker update failed', err); }
+                            if (dt.features[0].properties?.segments?.[0]) {
+                                const seg = dt.features[0].properties.segments[0]; if (etaValue) etaValue.textContent = `${Math.ceil(seg.duration / 60)} min`;
+                            }
                         }
                     }
-                }
 
-                if (Number.isFinite(pLat) && Number.isFinite(pLon) && Number.isFinite(xLat) && Number.isFinite(xLon)) {
-                    const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${pLon},${pLat}&end=${xLon},${xLat}`;
-                    const rdRes = await fetch(rdUrl); const rd = await rdRes.json();
-                    if (rd.features?.[0]) {
-                        if (activeRiderToDestRouteLayer) mapInstance.removeLayer(activeRiderToDestRouteLayer);
-                        activeRiderToDestRouteLayer = L.geoJSON(rd.features[0], { style: { color: '#007bff', weight: 5, opacity: 0.8 } }).addTo(mapInstance);
-                        try {
-                            const pickupLatLng = [pLat, pLon]; const destLatLng = [xLat, xLon]; const pickupIcon = L.divIcon({ className: 'pickup-marker', html: '<div class="marker-inner"></div>', iconSize: [25,25] }); const destIcon = L.divIcon({ className: 'dest-marker', html: '<div class="marker-inner"></div>', iconSize: [25,25] });
-                            if (activePickupMarker) activePickupMarker.setLatLng(pickupLatLng); else activePickupMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(mapInstance).bindPopup('Pickup Location');
-                            if (activeDestMarker) activeDestMarker.setLatLng(destLatLng); else activeDestMarker = L.marker(destLatLng, { icon: destIcon }).addTo(mapInstance).bindPopup('Destination');
-                        } catch (err) { console.warn('Pickup/dest marker update failed', err); }
+                    if (Number.isFinite(pLat) && Number.isFinite(pLon) && Number.isFinite(xLat) && Number.isFinite(xLon)) {
+                        const pdKey = `${pLat},${pLon}|${xLat},${xLon}`;
+                        let rd = null;
+                        if (pdKey !== _prevPickupToDestCoords) {
+                            const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${pLon},${pLat}&end=${xLon},${xLat}`;
+                            try {
+                                const rdRes = await fetch(rdUrl);
+                                if (rdRes.status === 429) { _orsRateLimitedUntil = now + 30000; console.warn('ORS rate limit detected (429)'); }
+                                else { rd = await rdRes.json(); _lastRDData = rd; _prevPickupToDestCoords = pdKey; }
+                            } catch(e) { console.warn('Pickup->dest route fetch failed', e); }
+                        } else { rd = _lastRDData; }
+
+                        if (rd && rd.features?.[0]) {
+                            if (activeRiderToDestRouteLayer) mapInstance.removeLayer(activeRiderToDestRouteLayer);
+                            activeRiderToDestRouteLayer = L.geoJSON(rd.features[0], { style: { color: '#007bff', weight: 5, opacity: 0.8 } }).addTo(mapInstance);
+                            try {
+                                const pickupLatLng = [pLat, pLon]; const destLatLng = [xLat, xLon]; const pickupIcon = L.divIcon({ className: 'pickup-marker', html: '<div class="marker-inner"></div>', iconSize: [25,25] }); const destIcon = L.divIcon({ className: 'dest-marker', html: '<div class="marker-inner"></div>', iconSize: [25,25] });
+                                if (activePickupMarker) activePickupMarker.setLatLng(pickupLatLng); else activePickupMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(mapInstance).bindPopup('Pickup Location');
+                                if (activeDestMarker) activeDestMarker.setLatLng(destLatLng); else activeDestMarker = L.marker(destLatLng, { icon: destIcon }).addTo(mapInstance).bindPopup('Destination');
+                            } catch (err) { console.warn('Pickup/dest marker update failed', err); }
+                        }
                     }
+                } else {
+                    console.warn('Skipping ORS routing due to rate limit until', new Date(_orsRateLimitedUntil));
                 }
 
                 const layers = [];
@@ -75,7 +106,9 @@
                 if (layers.length > 0) { let bounds = layers[0].getBounds(); layers.forEach(l => bounds.extend(l.getBounds())); mapInstance.fitBounds(bounds, { padding: [50,50] }); }
             } catch (e) { console.error('ETA refresh error', e); } finally { initialDriverRouteLoadDone = true; try { const loader = document.getElementById('driver-route-loader'); if (loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden','true'); } } catch(e){} }
         }
-        refreshEtaAndRoute(); setInterval(refreshEtaAndRoute, 5000);
+    refreshEtaAndRoute();
+    // Poll less aggressively to reduce ORS calls and avoid rate limits
+    setInterval(refreshEtaAndRoute, 8000);
     }
 
     // Driver chat modal and helpers
@@ -126,8 +159,29 @@
             let bookingId = activeBookingIdFromTemplate || document.body.getAttribute('data-active-booking-id');
             if (bookingId && bookingId !== 'null') startActiveBookingDisplay(bookingId, map);
             else {
+                // initial fetch for active booking
                 fetch('/api/driver/active-booking/').then(r => r.json()).then(d => { if (d.booking_id) startActiveBookingDisplay(d.booking_id, map); }).catch(()=>{});
             }
+
+            // Automatic refresh: poll for active booking changes so driver sees assignment without full page reload
+            try {
+                async function pollDriverActiveBooking() {
+                    try {
+                        const resp = await fetch('/api/driver/active-booking/');
+                        if (!resp.ok) return;
+                        const d = await resp.json();
+                        const remoteId = d.booking_id || null;
+                        const current = document.body.getAttribute('data-active-booking-id') || activeBookingIdFromTemplate || null;
+                        if (remoteId && String(remoteId) !== String(current)) {
+                            // update body attribute and start display
+                            document.body.setAttribute('data-active-booking-id', remoteId);
+                            try { startActiveBookingDisplay(remoteId, map); } catch(e) { console.warn('startActiveBookingDisplay failed', e); }
+                        }
+                    } catch(e) { console.warn('pollDriverActiveBooking failed', e); }
+                }
+                // Poll every 5 seconds
+                setInterval(pollDriverActiveBooking, 5000);
+            } catch(e) {}
         } catch (e) { console.warn('Driver map init failed', e); }
     });
 
