@@ -21,6 +21,7 @@ from apps.booking.models import DriverLocation
 from datetime import timedelta
 from django.conf import settings
 from decimal import Decimal
+from django.contrib.auth.views import redirect_to_login
 
 
 class LandingPage(View):
@@ -458,8 +459,16 @@ def update_rider_location(request):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-@login_required
 def get_route_info(request, booking_id):
+    # Handle unauthenticated requests gracefully for API callers (fetch/ajax)
+    if not request.user.is_authenticated:
+        # Determine if the caller expects JSON (fetch/XHR)
+        accept = request.META.get('HTTP_ACCEPT', '')
+        xrw = request.META.get('HTTP_X_REQUESTED_WITH', '') or request.headers.get('x-requested-with', '') if hasattr(request, 'headers') else ''
+        if xrw == 'XMLHttpRequest' or 'application/json' in accept:
+            return JsonResponse({'status': 'error', 'message': 'Authentication required'}, status=401)
+        # otherwise redirect to login page (preserve next)
+        return redirect_to_login(request.get_full_path())
     booking = get_object_or_404(Booking, id=booking_id)
     
     # Allow: drivers to preview using their own current location; riders to view for their own booking

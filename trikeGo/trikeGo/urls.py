@@ -29,4 +29,6 @@ urlpatterns = [
     # Your App URLs
     path('booking/', include('apps.booking.urls')),  # Handles all URLs starting with /booking/
     path('', include('apps.user.urls')),  # Handles user-related URLs like login, dashboards, etc.
+    # Chat API and views
+    path('chat/', include('apps.chat.urls')),
 ]
