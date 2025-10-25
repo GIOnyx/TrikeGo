@@ -114,6 +114,13 @@
 
     function closeChatModal() { if (!chatModal) return; chatModal.style.display = 'none'; _chatModalBookingId = null; if (window._chatModalPolling) { clearInterval(window._chatModalPolling); window._chatModalPolling = null; } }
 
+    // ORS / routing rate-limit guard and previous-coords cache to avoid excessive routing requests
+    let _orsRateLimitedUntil = 0;
+    let _prevDriverToPickupCoords = null;
+    let _prevPickupToDestCoords = null;
+    let _lastDTData = null;
+    let _lastRDData = null;
+
     async function loadModalMessages() {
         if (!_chatModalBookingId || !chatModalMessages) return;
         const res = await fetch(`/chat/api/booking/${_chatModalBookingId}/messages/`, { credentials: 'same-origin' });
@@ -333,16 +340,41 @@
                         }
                     } catch (e) { console.warn('Marker update failed', e); }
 
-                    // Fetch routes when appropriate
+                    // Fetch routes when appropriate, but avoid repeated ORS calls if coords unchanged or rate-limited
                     let dtData = null, rdData = null;
                     try {
-                        if (hasDriver && hasPickup) {
-                            const dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${dLon},${dLat}&end=${pLon},${pLat}`;
-                            const dtRes = await fetch(dtUrl); dtData = await dtRes.json();
-                        }
-                        if (hasPickup && hasDest) {
-                            const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${pLon},${pLat}&end=${xLon},${xLat}`;
-                            const rdRes = await fetch(rdUrl); rdData = await rdRes.json();
+                        const now = Date.now();
+                        const rateLimited = (_orsRateLimitedUntil && now < _orsRateLimitedUntil);
+                        if (!rateLimited) {
+                            if (hasDriver && hasPickup) {
+                                const driverPickupKey = `${dLat},${dLon}|${pLat},${pLon}`;
+                                if (driverPickupKey !== _prevDriverToPickupCoords) {
+                                    const dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${dLon},${dLat}&end=${pLon},${pLat}`;
+                                    try {
+                                        const dtRes = await fetch(dtUrl);
+                                        if (dtRes.status === 429) { _orsRateLimitedUntil = now + 30000; console.warn('ORS rate limit detected (429)'); }
+                                        else { dtData = await dtRes.json(); _lastDTData = dtData; _prevDriverToPickupCoords = driverPickupKey; }
+                                    } catch(e) { console.warn('Driver->pickup route fetch failed', e); }
+                                } else {
+                                    dtData = _lastDTData;
+                                }
+                            }
+
+                            if (hasPickup && hasDest) {
+                                const pickupDestKey = `${pLat},${pLon}|${xLat},${xLon}`;
+                                if (pickupDestKey !== _prevPickupToDestCoords) {
+                                    const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${pLon},${pLat}&end=${xLon},${xLat}`;
+                                    try {
+                                        const rdRes = await fetch(rdUrl);
+                                        if (rdRes.status === 429) { _orsRateLimitedUntil = now + 30000; console.warn('ORS rate limit detected (429)'); }
+                                        else { rdData = await rdRes.json(); _lastRDData = rdData; _prevPickupToDestCoords = pickupDestKey; }
+                                    } catch(e) { console.warn('Pickup->dest route fetch failed', e); }
+                                } else {
+                                    rdData = _lastRDData;
+                                }
+                            }
+                        } else {
+                            console.warn('Skipping ORS calls until', new Date(_orsRateLimitedUntil));
                         }
                     } catch(e) { console.warn('Route fetch failed', e); }
 
@@ -439,7 +471,8 @@
                 currentTrackedBookingId = bookingId;
                 updateAll(bookingId);
                 if (trackingInterval) clearInterval(trackingInterval);
-                trackingInterval = setInterval(() => updateAll(bookingId), 5000);
+                // Poll less aggressively to avoid hitting ORS rate limits; update route every 8s
+                trackingInterval = setInterval(() => updateAll(bookingId), 8000);
             }
 
             // Booking preview and tracking boot
@@ -507,6 +540,50 @@
                     }
                 }
             } catch(e) { console.warn('Booking boot failed', e); }
+
+            // Automatic refresh: poll booking items for status/assignment changes so rider doesn't need to refresh
+            try {
+                async function pollBookingItems() {
+                    try {
+                        const items = document.querySelectorAll('.booking-item');
+                        if (!items || items.length === 0) return;
+                        for (const el of items) {
+                            const bid = el.dataset.bookingId;
+                            if (!bid) continue;
+                            try {
+                                const infoRes = await fetch(`/api/booking/${bid}/route_info/`);
+                                if (!infoRes.ok) continue;
+                                const info = await infoRes.json();
+                                if (info.status !== 'success') continue;
+                                // update dataset for driver assignment
+                                if (info.driver && info.driver.id) {
+                                    if (!el.dataset.bookingDriver) el.dataset.bookingDriver = info.driver.id;
+                                }
+                                // update display text if addresses differ
+                                const pickupEl = el.querySelector('strong');
+                                const destText = el.childNodes[2] && el.childNodes[2].textContent ? el.childNodes[2].textContent.trim() : null;
+                                if (pickupEl && info.pickup_address && pickupEl.textContent.trim() !== info.pickup_address) pickupEl.textContent = info.pickup_address;
+                                if (destText && info.destination_address && destText !== info.destination_address) {
+                                    // replace the arrow content after strong
+                                    // simple approach: set innerHTML to pickup → destination + small est arrival if present
+                                    let html = `<strong>${info.pickup_address || (pickupEl?pickupEl.textContent:'--')}</strong> → ${info.destination_address || '--'}`;
+                                    if (info.estimated_arrival) html += `<br><small>Est. Arrival: ${new Date(info.estimated_arrival).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</small>`;
+                                    el.innerHTML = html;
+                                }
+                                // if booking now accepted/on_the_way/started and we're not already tracking it, start tracking
+                                const bookingStatus = (info.booking_status || '').toLowerCase();
+                                if ((bookingStatus.includes('accept') || bookingStatus.includes('on the way') || bookingStatus.includes('started')) && (!currentTrackedBookingId || currentTrackedBookingId !== String(bid))) {
+                                    // start tracking this booking
+                                    try { startTracking(bid); } catch(e){}
+                                }
+                            } catch(e) { /* ignore per-item errors */ }
+                        }
+                    } catch(e) { console.warn('pollBookingItems failed', e); }
+                }
+                // Run immediately and then periodically
+                pollBookingItems();
+                setInterval(pollBookingItems, 5000);
+            } catch(e) { /* non-critical */ }
 
             // Wire Chat button in driver-info-card to open chat for current tracked booking
             try {
