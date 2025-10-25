@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     'rest_framework', 
     'apps.user',
     'apps.booking',
+    'apps.chat',
 ]
 
 MIDDLEWARE = [

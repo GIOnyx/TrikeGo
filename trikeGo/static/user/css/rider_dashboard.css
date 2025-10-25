@@ -377,3 +377,28 @@ body.booking-active .dashboard-booking-card {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .route-loader-text { color: #222; font-weight: 600; }
+
+/* Chat bubble styles moved from template */
+#chatModalMessages { display:flex; flex-direction:column; gap:8px; }
+.chat-msg-own { align-self: flex-end; background: #dcf8c6; padding:8px 12px; border-radius:12px; max-width:85%; box-shadow:0 1px 0 rgba(0,0,0,0.05); text-align:right; }
+.chat-msg-other { align-self: flex-start; background: #ffffff; padding:8px 12px; border-radius:12px; max-width:85%; border:1px solid #eee; text-align:left; }
+.chat-msg-meta { font-size: 11px; color: #666; margin-bottom:4px; }
+.chat-date-sep { text-align:center; color:#777; font-size:12px; margin:8px 0; }
+.newest-message { box-shadow: 0 0 0 4px rgba(52,152,219,0.12); transition: box-shadow 400ms ease-out; }
+
+@keyframes flashPulse {
+  0% { box-shadow: 0 0 0 6px rgba(52,152,219,0.18); }
+  100% { box-shadow: none; }
+}
+
+.flash-animate { animation: flashPulse 700ms ease-out; }
+
+/* Chat close button styles */
+#chatModalClose, #driverChatClose, .chat-modal .close-btn {
+  background-color: #dc3545; /* red background */
+  color: #fff; /* white X */
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
