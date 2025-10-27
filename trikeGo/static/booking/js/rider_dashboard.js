@@ -444,7 +444,10 @@
                             document.body.classList.remove('booking-active');
                         }
                         if (infoCard) {
+                            const previewCard = document.getElementById('booking-preview-card');
                             if (bookingAccepted) {
+                                // hide the preview card when a driver has accepted (show driver info instead)
+                                if (previewCard) { previewCard.style.display = 'none'; previewCard.setAttribute('aria-hidden','true'); }
                                 const driverObj = info.driver || null; const tricycle = info.tricycle || {};
                                 const driverName = (driverObj && driverObj.name) ? driverObj.name : (info.driver_name || 'Driver');
                                 const driverPlate = (driverObj && driverObj.plate) ? driverObj.plate : (info.driver_plate || 'AB 1234');
@@ -454,6 +457,8 @@
                                 infoCard.querySelector('.driver-color').textContent = `Color: ${driverColor}`;
                                 infoCard.style.display = 'block'; infoCard.setAttribute('aria-hidden','false');
                             } else { infoCard.style.display = 'none'; infoCard.setAttribute('aria-hidden','true'); }
+                            // when not accepted, ensure preview card is visible
+                            if (!bookingAccepted && previewCard) { previewCard.style.display = 'block'; previewCard.setAttribute('aria-hidden','false'); }
                         }
                     } catch(e) { console.warn('Driver card update failed', e); }
 
@@ -467,17 +472,29 @@
             }
 
             function startTracking(bookingId) {
-                const trackingInfo = document.getElementById('tracking-info'); if (trackingInfo) trackingInfo.style.display = 'block';
-                currentTrackedBookingId = bookingId;
-                updateAll(bookingId);
-                if (trackingInterval) clearInterval(trackingInterval);
-                // Poll less aggressively to avoid hitting ORS rate limits; update route every 8s
-                trackingInterval = setInterval(() => updateAll(bookingId), 8000);
+                        const trackingInfo = document.getElementById('tracking-info'); if (trackingInfo) trackingInfo.style.display = 'block';
+                        currentTrackedBookingId = bookingId;
+                        // Ensure UI reflects that a booking is now active: hide the booking form and preview card immediately
+                        try {
+                            document.body.classList.add('booking-active');
+                            const bookingPanel = document.querySelector('.dashboard-booking-card');
+                            if (bookingPanel) bookingPanel.style.display = 'none';
+                            const previewCard = document.getElementById('booking-preview-card');
+                            if (previewCard) { previewCard.style.display = 'none'; previewCard.setAttribute('aria-hidden','true'); }
+                            const infoCard = document.getElementById('driver-info-card');
+                            if (infoCard) { infoCard.style.display = 'block'; infoCard.setAttribute('aria-hidden','false'); }
+                        } catch(e) { console.warn('startTracking UI update failed', e); }
+
+                        updateAll(bookingId);
+                        if (trackingInterval) clearInterval(trackingInterval);
+                        // Poll less aggressively to avoid hitting ORS rate limits; update route every 8s
+                        trackingInterval = setInterval(() => updateAll(bookingId), 8000);
             }
 
             // Booking preview and tracking boot
             try {
                 const bookingItems = document.querySelectorAll('.booking-item');
+                console.debug('Booking boot: found booking items count =', bookingItems.length);
                 if (bookingItems.length > 0) {
                     // find pending preview booking or first non-pending target
                     let previewBooking = null; let target = null;
@@ -500,6 +517,7 @@
                     });
 
                     if (!target) target = bookingItems[0];
+                    console.debug('Booking boot: previewBooking=', previewBooking, 'target=', target);
 
                     // If there's an accepted/on_the_way booking, start full tracking
                     if (target) {

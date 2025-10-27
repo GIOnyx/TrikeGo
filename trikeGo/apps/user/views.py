@@ -22,6 +22,8 @@ from datetime import timedelta
 from django.conf import settings
 from decimal import Decimal
 from django.contrib.auth.views import redirect_to_login
+from django.contrib.auth import logout as auth_logout
+from django.views.decorators.csrf import csrf_protect
 
 
 class LandingPage(View):
@@ -353,27 +355,67 @@ class RiderDashboard(View):
             return redirect('user:landing')
         
         # Restrict: rider can only have one active booking
-        has_active = Booking.objects.filter(
+        active_qs = Booking.objects.filter(
             rider=request.user,
             status__in=['pending', 'accepted', 'on_the_way', 'started']
-        ).exists()
-        if has_active:
+        )
+        active_count = active_qs.count()
+        print(f'RiderDashboard.post: existing active bookings for user {request.user.username}: {active_count}')
+        if active_count > 0:
             messages.error(request, 'You already have an active ride. Please complete or cancel it first.')
             return redirect('user:rider_dashboard')
-        
+
         form = BookingForm(request.POST)
-        
-        if form.is_valid():
+        # Debug: print validity and incoming POST keys
+        try:
+            print('RiderDashboard.post: POST keys:', list(request.POST.keys()))
+        except Exception:
+            pass
+
+        valid = form.is_valid()
+        print(f'RiderDashboard.post: BookingForm.is_valid() => {valid}')
+        if not valid:
+            try:
+                non_field = form.non_field_errors()
+                if non_field:
+                    for err in non_field:
+                        messages.error(request, err)
+                for field, errs in form.errors.items():
+                    for err in errs:
+                        messages.error(request, f"{field}: {err}")
+                # Print raw errors to console for deeper inspection
+                print('BookingForm invalid:', form.errors.as_json())
+            except Exception as e:
+                print('Error reporting booking form errors:', e)
+
+            context = self.get_context_data(request, form=form)
+            return render(request, self.template_name, context)
+
+        # If valid, show cleaned data and save within try/except
+        try:
+            print('BookingForm cleaned_data:', form.cleaned_data)
             booking = form.save(commit=False)
             booking.rider = request.user
             booking.save()
-            
+            print(f'Booking saved with id={booking.id} for rider={request.user.username}')
             messages.success(request, 'Your booking has been created successfully!')
             return redirect('user:rider_dashboard')
-        else:
-            messages.error(request, 'Please correct the errors below.')
+        except Exception as e:
+            print('Exception saving booking:', e)
+            messages.error(request, 'An error occurred while saving your booking. Please try again.')
             context = self.get_context_data(request, form=form)
             return render(request, self.template_name, context)
+
+
+@require_POST
+def logout_view(request):
+    """Log the user out and redirect to the landing page.
+
+    This endpoint accepts POST only (the logout icon submits a POST form).
+    """
+    # Use Django's logout helper
+    auth_logout(request)
+    return redirect('user:landing')
 
 class AdminDashboard(View):
     template_name = 'user/admin_dashboard.html'

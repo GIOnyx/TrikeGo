@@ -20,36 +20,34 @@ body {
   width: 100%;
 }
 
-/* Vertical sidebar card */
+/* Vertical sidebar (compact rail by default) */
 .sidebar {
   position: fixed;
-  top: 70px;
+  top: 0;
   left: 0;
-  width: 280px;
-  height: calc(100vh - 70px);
-  background-color: rgba(10,16,32,0.75);
+  bottom: 0;
+  width: 72px; /* compact rail */
+  background-color: #0f1724;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
-  padding: 1rem;
-  z-index: 10;
+  overflow: hidden;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.06);
+  padding: 8px 6px;
+  z-index: 2000;
+  transition: width 220ms ease;
 }
+/* layout for central icons area inside rail */
+.nav-center { flex: 1; display:flex; flex-direction:column; align-items:center; gap:12px; padding-top:8px; }
+.nav-center .nav-icon { display:block; margin:8px 0; }
 
 .main-content {
-    margin-left: 300px; /* sidebar width + padding */
-    padding: 2rem;
-    width: calc(100% - 320px);
+  margin-left: 300px; /* legacy */
+  padding: 2rem;
+  width: calc(100% - 320px);
 }
 
-.sidebar::-webkit-scrollbar {
-  width: 8px;
-}
-
-.sidebar::-webkit-scrollbar-thumb {
-  background-color: rgba(29, 46, 94, 0.75);
-  border-radius: 4px;
-}
+.sidebar::-webkit-scrollbar { width: 8px; }
+.sidebar::-webkit-scrollbar-thumb { background-color: rgba(29, 46, 94, 0.75); border-radius: 4px; }
 
 /* Each dashboard card */
 .dashboard-profile-card,
@@ -128,22 +126,8 @@ body {
   z-index: 1002; /* make sure logout stays above map legend */
 }
 
-/* Map specific styles */
-#map-container {
-    height: 450px;
-    width: 100%;
-    border-radius: 8px;
-    border: 1px solid #ddd;
-    margin-top: 1rem;
-  position: relative; /* make legend position relative to map */
-}
-#route-details {
-    margin-top: 1rem;
-    padding: 1rem;
-    background-color: #eef2f7;
-    border-radius: 8px;
-    color: #334155;
-}
+/* route details block moved; map container is controlled by the bottom-of-file rules to avoid conflicts */
+/* #route-details styles remain available below or in template-specific CSS if needed */
 
 /* Ensure Leaflet markers and divIcons are visible above map layers */
 .leaflet-container .leaflet-marker-icon,
@@ -220,3 +204,58 @@ body {
   padding: 6px 8px;
   cursor: pointer;
 }
+
+/* Ensure map fills the viewport and accounts for the compact/expanded sidebar rail.
+   This provides a single authoritative source for #map-container geometry so the map
+   doesn't get clipped or half-rendered due to conflicting rules. */
+#map-container {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 72px; /* compact rail width */
+    right: 0;
+    z-index: 0;
+}
+body.sidebar-expanded .sidebar { width: 320px; }
+body.sidebar-expanded #map-container { left: 320px; }
+
+/* When the rides view is shown, hide the central icons and surface the rides list */
+body.show-rides .nav-center { display: none; }
+/* Ensure the sidebar content (rides/profile) is visible only when expanded */
+.sidebar-content { display: none; color: #fff; height: 100%; }
+body.sidebar-expanded .sidebar-content { display: block; }
+.sidebar-content .sidebar-rides { color: #111; display:flex; flex-direction:column; }
+.sidebar-content .sidebar-rides a, .sidebar-content .sidebar-rides p { color: #444; }
+/* Rides list card styling (stacked white cards inside dark rail) */
+.sidebar-content .sidebar-rides ul { padding: 0; margin: 0; display:flex; flex-direction:column; gap:12px; }
+.sidebar-content .sidebar-rides li { background: #ffffff; color: #111; border-radius: 8px; padding: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+.sidebar-content .sidebar-rides li .ride-meta { color: #444; font-size: 13px; margin-top:6px; }
+.sidebar-content .sidebar-rides .btn { font-size: 13px; padding: 6px 8px; border-radius: 6px; }
+.sidebar-content .sidebar-rides .btn.btn-success { background: #2ecc71; }
+.sidebar-content .sidebar-rides .btn.btn-secondary { background: #6c757d; }
+
+/* bottom back link styling for expanded rail */
+.sidebar-content .sidebar-rides #rides-back-bottom { color: #0b63d6; background: transparent; padding: 10px 0; display:block; margin-top:12px; }
+
+/* nav-body: fills remaining vertical area of sidebar so content can stack */
+.nav-body { flex: 1; display:flex; flex-direction:column; }
+.nav-top { }
+.nav-bar { display:flex; flex-direction:column; height:100%; }
+
+/* new: make rider name more prominent for contrast */
+.sidebar-content .sidebar-rides li .ride-title { color: #0b2638; font-weight: 700; font-size: 14px; }
+.sidebar-content .sidebar-rides li .ride-meta { color: #34495e; }
+
+/* anchor the back container to the bottom of the panel */
+.sidebar-content .sidebar-rides { display:flex; flex-direction:column; height:100%; }
+.rides-back-container { margin-top: auto; padding-top: 12px; }
+.rides-back-link { display:block; text-align:center; padding:10px 0; color:#0b63d6; }
+
+/* hide logout when rides view is shown (active-booking/rides view) */
+body.show-rides .logout-form { display: none !important; }
+/* Tidy rides list for dark rail background */
+.sidebar-content .sidebar-rides ul { padding: 0; margin: 0; }
+.sidebar-content .sidebar-rides li { padding: 10px 6px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #e6eef8; }
+.sidebar-content .sidebar-rides .btn { font-size: 13px; padding: 6px 8px; border-radius: 6px; }
+.sidebar-content .sidebar-rides .btn.btn-success { background: #2ecc71; }
+.sidebar-content .sidebar-rides .btn.btn-secondary { background: #6c757d; }
