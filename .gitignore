@@ -47,6 +47,7 @@ nosetests.xml
 test.db
 .pytest_cache/
 
+.copilot-tasks
 # Build/packaging
 *.egg
 *.egg-info/
