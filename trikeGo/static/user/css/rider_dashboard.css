@@ -8,44 +8,38 @@ body {
 }
 
 #map {
-  position: relative; /* allow header and other elements to sit above */
+  position: relative;
   top: 0;
   left: 0;
   width: 100%;
-  height: calc(100vh - 70px); /* leave space for header */
+  height: 100vh;
   z-index: 0;
 }
 
-.header {
-  background:rgba(10,16,32,0.75);
-  color: white;
-  padding: 1rem;
-  text-align: center;
-  position: relative;
-  z-index: 2;
-}
 .container {
   display: flex;
-  margin-top: 70px; /* avoid header overlap */
+  margin-top: 0;
   width: 100%;
   position: relative;
-  z-index: 1;
+  /* ensure UI panels sit above the Leaflet map panes */
+  z-index: 1400;
 }
 
 /* Vertical sidebar card */
 .sidebar {
   position: fixed;
-  top: 112px;
+  top: 20px;
   left: 0;
-  height: calc(100vh - 112px);
-  width: 72px; /* collapsed width */
+  height: calc(100vh - 40px);
+  width: 72px; /* compact icon rail width */
   background-color: #0b2340; /* deep navy */
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  overflow: hidden;
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
-  padding: 12px 8px;
-  transition: width 220ms ease;
+  padding: 12px 12px;
+  align-items: center;
+  z-index: 1410; /* above the map */
 }
 
 .sidebar::-webkit-scrollbar {
@@ -64,39 +58,18 @@ body {
   letter-spacing: 0.6px;
 }
 
-.nav-bar { display:flex; flex-direction:column; align-items:center; gap:18px; }
+.nav-bar { display:flex; flex-direction:column; align-items:center; gap:18px; height:100%; }
 .nav-top { margin-bottom:8px; }
 .nav-icons { display:flex; flex-direction:column; gap:18px; }
 .nav-icon { display:block; width:44px; height:44px; border-radius:10px; color:#cfe7ff; text-align:center; line-height:44px; background:rgba(255,255,255,0.02); }
 .nav-icon:hover { background: rgba(255,255,255,0.04); }
+.nav-icons .logout-icon { margin-top: auto; }
 .nav-icon img { width: 24px; height: 24px; display:block; margin: 0 auto; filter: brightness(0.95); align-items: center; align-content: center; align-self: center;}
 
-.sidebar-content { 
-  margin-top: 12px;
-  width: 320px; /* expanded content width */
-  transform-origin: left top;
-  position: absolute;
-  left: 72px;
-  top: 0;
-  background: transparent;
-  pointer-events: none; /* disabled until shown */
-  opacity: 0;
-  transition: opacity 180ms ease, transform 180ms ease;
-}
-
-.sidebar:hover, .sidebar[aria-expanded="true"] { width: 392px; }
-.sidebar:hover .sidebar-content, .sidebar[aria-expanded="true"] .sidebar-content {
-  opacity: 1;
-  pointer-events: auto;
-}
+.sidebar-content { display:none; }
 
 /* When the sidebar content expands, allow scrolling if content exceeds viewport height */
-.sidebar .sidebar-content {
-  max-height: calc(100vh - 140px);
-  overflow-y: auto;
-  padding-right: 8px; /* space for scrollbar */
-}
-
+.sidebar .sidebar-content { display:none; }
 .sidebar .sidebar-content .dashboard-profile-card,
 .sidebar .sidebar-content .dashboard-loyaltypoints-card,
 .sidebar .sidebar-content .dashboard-tracking-card,
@@ -140,6 +113,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+
 }
 
 .btn {
@@ -184,6 +158,24 @@ body {
   overflow-y: auto;
   z-index: 1000;
   box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+
+/* Active booking pill (small, visible near the top-left of the map) */
+.active-booking-pill {
+  position: absolute;
+  top: 16px;
+  left: 96px; /* keep clear of the compact sidebar */
+  z-index: 2000;
+  background: rgba(255,255,255,0.98);
+  color: #1f2937;
+  padding: 8px 12px;
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+  font-size: 13px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.active-booking-pill .pill-link { color: #0b69ff; font-weight:600; text-decoration:underline; }
   display: none;
   margin-top: -1px;
 }
@@ -216,7 +208,7 @@ body {
   padding: 1.5rem 2rem;
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
   width: clamp(320px, 50%, 600px);
-  z-index: 800;   
+  z-index: 1420;   
 }
 
 /* When a booking is active, hide the booking card (rider can only have 1 active booking) */
@@ -224,14 +216,14 @@ body.booking-active .dashboard-booking-card {
   display: none !important;
 }
 
+/* Defensive: hide preview card if booking-active is set (covers timing races) */
+body.booking-active #booking-preview-card { display: none !important; }
+
+/* Small status summary for non-pending active booking rendered inline */
+#booking-status-summary { position: absolute; top: 56px; left: 96px; z-index: 2005; background: rgba(255,255,255,0.96); padding: 8px 12px; border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); color:#111; font-weight:600; }
+
 .logout-btn {
-  float: right;
-  background-color: #dc3545;
-  color: white;
-  padding: 0.5rem 1rem;
-  text-decoration: none;
-  border-radius: 4px;
-  z-index: 1002; /* ensure visible above legend */
+  display: none; /* header logout removed; keep rule for compatibility */
 }
 .booking-form {
   background:#0e1a36;
@@ -315,22 +307,41 @@ body.booking-active .dashboard-booking-card {
 .map-legend .legend-dot.pickup { background: #ffc107; }
 .map-legend .legend-dot.dest { background: #007bff; }
 
+/* Active booking pill (small, visible near the top-left of the map) */
+.active-booking-pill {
+  position: absolute;
+  top: 16px;
+  left: 128px; /* keep clear of the compact sidebar */
+  z-index: 2000;
+  background: rgba(255,255,255,0.98);
+  color: #1f2937;
+  padding: 8px 12px;
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+  font-size: 13px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.active-booking-pill .pill-link { color: #0b69ff; font-weight:600; text-decoration:underline; }
+
 /* Driver info card (bottom-left overlay) */
 .driver-info-card {
   position: fixed;
-  /* move a bit right so it doesn't overlap the left sidebar */
-  left: 280px;
-  bottom: 20px;
+  /* move a bit right so it doesn't overlap the left sidebar; increase gap to avoid touching */
+  left: 120px;
+  bottom: 24px;
   background: linear-gradient(180deg, rgba(3,11,22,0.95), rgba(8,18,34,0.95));
   color: #eef6ff;
-  border-radius: 14px;
+  border-radius: 28px;
   padding: 14px 16px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.35);
-  z-index: 1100;
+  z-index: 1425;
   min-width: 320px;
 }
 .driver-card-inner { display:flex; gap:14px; align-items:center; }
-.driver-avatar { width:64px; height:64px; border-radius: 8px; background: linear-gradient(135deg,#0f1724,#152033); box-shadow: inset 0 -6px 12px rgba(255,255,255,0.03); }
+.driver-avatar { width:72px; height:72px; border-radius: 50%; background: linear-gradient(135deg,#0f1724,#152033); box-shadow: inset 0 -6px 12px rgba(255,255,255,0.03); }
+.driver-info-card .driver-actions { margin-left: 12px; }
 .driver-details { flex:1; }
 .driver-name { font-weight:700; font-size:16px; margin-bottom:6px; }
 .driver-meta { font-size:12px; color: rgba(255,255,255,0.8); display:flex; gap:10px; margin-bottom:8px; }
@@ -401,4 +412,14 @@ body.booking-active .dashboard-booking-card {
   border-radius: 6px;
   padding: 6px 8px;
   cursor: pointer;
+}
+
+/* Move Leaflet zoom control to bottom-right of the map */
+.leaflet-control-zoom {
+  position: absolute !important;
+  right: 16px !important;
+  bottom: 16px !important;
+  left: auto !important;
+  top: auto !important;
+  z-index: 1200 !important;
 }

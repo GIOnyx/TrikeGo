@@ -1,5 +1,14 @@
 // Driver dashboard JS (moved from template)
 (function(){
+    // Ensure a placeholder exists so inline onclicks don't fail if the DOMContentLoaded handler
+    // hasn't run yet or initialization is delayed. Clicks will be queued and processed later.
+    if (!window.reviewBooking) {
+        window._queuedReviewCalls = window._queuedReviewCalls || [];
+        window.reviewBooking = function(bid) {
+            console.log('reviewBooking not available yet, queuing', bid);
+            window._queuedReviewCalls.push(bid);
+        };
+    }
     const cfg = window.DRIVER_DASH_CONFIG || {};
     const ORS_API_KEY = cfg.ORS_API_KEY || '';
     const userId = cfg.userId || null;
@@ -74,6 +83,30 @@
                         }
                     }
 
+                    // Workaround: occasionally Leaflet tiles are clipped on load. Ensure map invalidates size after load
+                    window.addEventListener('load', function () {
+                        setTimeout(function () {
+                            try {
+                                if (window.DRIVER_MAP && typeof window.DRIVER_MAP.invalidateSize === 'function') {
+                                    window.DRIVER_MAP.invalidateSize();
+                                }
+                                // If route layer exists, try to fit bounds so markers are visible
+                                if (window.DRIVER_ROUTE_LAYER && typeof window.DRIVER_ROUTE_LAYER.getBounds === 'function' && window.DRIVER_MAP) {
+                                    try {
+                                        window.DRIVER_MAP.fitBounds(window.DRIVER_ROUTE_LAYER.getBounds(), { padding: [80, 80] });
+                                    }
+                                    catch (e) {
+                                        // ignore
+                                    }
+                                }
+                            }
+                            catch (err) {
+                                // ignore any errors during initial resize
+                                console.warn('Driver dashboard: map invalidateSize error', err);
+                            }
+                        }, 300);
+                    });
+
                     if (Number.isFinite(pLat) && Number.isFinite(pLon) && Number.isFinite(xLat) && Number.isFinite(xLon)) {
                         const pdKey = `${pLat},${pLon}|${xLat},${xLon}`;
                         let rd = null;
@@ -94,6 +127,14 @@
                                 if (activePickupMarker) activePickupMarker.setLatLng(pickupLatLng); else activePickupMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(mapInstance).bindPopup('Pickup Location');
                                 if (activeDestMarker) activeDestMarker.setLatLng(destLatLng); else activeDestMarker = L.marker(destLatLng, { icon: destIcon }).addTo(mapInstance).bindPopup('Destination');
                             } catch (err) { console.warn('Pickup/dest marker update failed', err); }
+                            // Update booking distance UI if present
+                            try {
+                                const seg = rd.features[0].properties?.segments?.[0];
+                                if (seg) {
+                                    const distEl = document.getElementById('booking-distance');
+                                    if (distEl) distEl.textContent = (seg.distance/1000).toFixed(2) + ' km';
+                                }
+                            } catch(e) { /* ignore */ }
                         }
                     }
                 } else {
@@ -154,6 +195,8 @@
         try {
             const map = L.map('map-container').setView([10.3157, 123.8854], 13);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors', maxZoom: 19 }).addTo(map);
+            // Leaflet needs an invalidateSize() after layout changes so the map paints full area
+            setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 250);
             if (navigator.geolocation) navigator.geolocation.getCurrentPosition((pos) => { map.setView([pos.coords.latitude, pos.coords.longitude], 15); }, () => {}, { enableHighAccuracy: true, timeout: 5000 });
 
             let bookingId = activeBookingIdFromTemplate || document.body.getAttribute('data-active-booking-id');
@@ -162,6 +205,164 @@
                 // initial fetch for active booking
                 fetch('/api/driver/active-booking/').then(r => r.json()).then(d => { if (d.booking_id) startActiveBookingDisplay(d.booking_id, map); }).catch(()=>{});
             }
+
+            // Expose map instance for review buttons and wire review button clicks
+            window.DRIVER_MAP = map;
+            // Sidebar toggles: rides icon opens the hidden sidebar-content; open-rides button also opens it
+            try {
+                const ridesIconEl = document.getElementById('rides-icon');
+                const sidebarContentEl = document.querySelector('.sidebar-content');
+                const openRidesBtn = document.getElementById('open-rides-btn');
+                const ridesBack = document.getElementById('rides-back');
+                if (ridesIconEl && sidebarContentEl) {
+                    ridesIconEl.addEventListener('click', function(e){
+                        e.preventDefault();
+                    // expand the rail in-place: add a body class so CSS shifts the map
+                    try { document.body.classList.add('sidebar-expanded','show-rides'); } catch(e){}
+                    // show rides view inside the sidebar
+                    try { const ridesView = sidebarContentEl.querySelector('.sidebar-rides'); const mainView = sidebarContentEl.querySelector('.sidebar-main'); if (ridesView && mainView) { ridesView.style.display = 'block'; mainView.style.display = 'none'; } } catch(e){}
+                    try { map.invalidateSize(); } catch(e){}
+                    });
+                }
+                if (ridesBack && sidebarContentEl) {
+                    ridesBack.addEventListener('click', function(e){ e.preventDefault(); try { const ridesView = sidebarContentEl.querySelector('.sidebar-rides'); const mainView = sidebarContentEl.querySelector('.sidebar-main'); if (ridesView && mainView) { ridesView.style.display = 'none'; mainView.style.display = 'block'; } document.body.classList.remove('sidebar-expanded','show-rides'); try { map.invalidateSize(); } catch(e){} } catch(err) { console.warn('ridesBack handler', err); } });
+                }
+                // bottom back link (inside rides panel)
+                const ridesBackBottom = document.getElementById('rides-back-bottom');
+                if (ridesBackBottom && sidebarContentEl) {
+                    ridesBackBottom.addEventListener('click', function(e){ e.preventDefault(); try { const ridesView = sidebarContentEl.querySelector('.sidebar-rides'); const mainView = sidebarContentEl.querySelector('.sidebar-main'); if (ridesView && mainView) { ridesView.style.display = 'none'; mainView.style.display = 'block'; } document.body.classList.remove('sidebar-expanded','show-rides'); try { map.invalidateSize(); } catch(e){} } catch(err) { console.warn('ridesBackBottom handler', err); } });
+                }
+                if (openRidesBtn && sidebarContentEl) {
+                    openRidesBtn.addEventListener('click', function(){ try { document.body.classList.add('sidebar-expanded'); const ridesView = sidebarContentEl.querySelector('.sidebar-rides'); const mainView = sidebarContentEl.querySelector('.sidebar-main'); if (ridesView && mainView) { ridesView.style.display = 'block'; mainView.style.display = 'none'; } map.invalidateSize(); } catch(e){} });
+                }
+            } catch(e){ console.warn('Sidebar toggle init failed', e); }
+
+            // Helpful debug: show console message if ORS API key missing
+            if (!ORS_API_KEY || ORS_API_KEY.length < 10) {
+                console.warn('OpenRouteService API key appears missing or short; client-side route preview may fail. Set OPENROUTESERVICE_API_KEY in settings and render it into DRIVER_DASH_CONFIG.');
+            }
+            function reviewBooking(bookingId) {
+                console.log('reviewBooking called for', bookingId);
+                if (!bookingId) return;
+                const routeDetails = document.getElementById('route-details');
+                const loader = document.getElementById('driver-route-loader');
+                if (loader) { loader.classList.remove('hidden'); loader.setAttribute('aria-hidden','false'); }
+                fetch(`/api/booking/${bookingId}/route_info/`).then(r => r.json()).then(async (info) => {
+                    if (!info || info.status !== 'success') { console.log('route_info returned', info); if (routeDetails) routeDetails.textContent = 'No route info available.'; return; }
+                    // Draw pickup->destination route for review
+                    const pLat = Number(info.pickup_lat); const pLon = Number(info.pickup_lon); const xLat = Number(info.destination_lat); const xLon = Number(info.destination_lon);
+                    if (!(Number.isFinite(pLat) && Number.isFinite(pLon) && Number.isFinite(xLat) && Number.isFinite(xLon))) {
+                        if (routeDetails) routeDetails.textContent = 'Insufficient coordinates to preview route.'; return;
+                    }
+                    try {
+                        console.log('ORS route request for review:', pLat,pLon,xLat,xLon);
+                        // request ORS for pickup->dest
+                        const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${pLon},${pLat}&end=${xLon},${xLat}`;
+                        const rdRes = await fetch(rdUrl);
+                        if (!rdRes.ok) { if (routeDetails) routeDetails.textContent = 'Routing service error.'; return; }
+                        const rd = await rdRes.json();
+                        if (rd && rd.features && rd.features[0]) {
+                            console.log('ORS returned route features', rd.features[0]);
+                            // remove previous review layers/markers if any
+                            try { if (window._driverReviewLayer) { window.DRIVER_MAP.removeLayer(window._driverReviewLayer); window._driverReviewLayer = null; } } catch(e){}
+                            try { if (window._driverReviewDriverMarker) { window.DRIVER_MAP.removeLayer(window._driverReviewDriverMarker); window._driverReviewDriverMarker = null; } } catch(e){}
+                            try { if (window._driverReviewPickupMarker) { window.DRIVER_MAP.removeLayer(window._driverReviewPickupMarker); window._driverReviewPickupMarker = null; } } catch(e){}
+                            try { if (window._driverReviewDestMarker) { window.DRIVER_MAP.removeLayer(window._driverReviewDestMarker); window._driverReviewDestMarker = null; } } catch(e){}
+
+
+                            // add route layer (pickup->destination)
+                            window._driverReviewLayer = L.geoJSON(rd.features[0], { style: { color: '#007bff', weight: 5, opacity: 0.8 } }).addTo(window.DRIVER_MAP);
+
+                            // Additionally, draw driver -> pickup route if driver coords exist so drivers can see how far they must travel
+                            try {
+                                const dLat = Number(info.driver_lat); const dLon = Number(info.driver_lon);
+                                if (Number.isFinite(dLat) && Number.isFinite(dLon) && Number.isFinite(pLat) && Number.isFinite(pLon)) {
+                                    const dpUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${dLon},${dLat}&end=${pLon},${pLat}`;
+                                    try {
+                                        const dpRes = await fetch(dpUrl);
+                                        if (dpRes.ok) {
+                                            const dpData = await dpRes.json();
+                                            if (dpData && dpData.features && dpData.features[0]) {
+                                                // remove previous driver->pickup layer if present
+                                                try { if (window._driverReviewDriverToPickupLayer) { window.DRIVER_MAP.removeLayer(window._driverReviewDriverToPickupLayer); window._driverReviewDriverToPickupLayer = null; } } catch(e){}
+                                                // draw solid green driver->pickup route (solid line - not dashed)
+                                                window._driverReviewDriverToPickupLayer = L.geoJSON(dpData.features[0], { style: { color: '#28a745', weight: 5, opacity: 0.8 } }).addTo(window.DRIVER_MAP);
+                                                try { const dpBounds = window._driverReviewDriverToPickupLayer.getBounds(); if (dpBounds) { window._driverReviewLayer.getBounds().extend(dpBounds); } } catch(e){}
+                                            } else { console.log('Driver->pickup ORS returned no features', dpData); }
+                                        } else {
+                                            console.warn('Driver->pickup ORS request failed', dpRes.status);
+                                        }
+                                    } catch(e) { console.warn('Driver->pickup ORS fetch failed', e); }
+                                }
+                            } catch(e) { console.warn('Driver->pickup route generation failed', e); }
+
+                            // create and add markers for driver, pickup and destination when coords are present
+                            const markersToBounds = [];
+                            try {
+                                // driver location if available
+                                const dLat = Number(info.driver_lat); const dLon = Number(info.driver_lon);
+                                if (Number.isFinite(dLat) && Number.isFinite(dLon)) {
+                                    const driverIcon = L.divIcon({ className: 'driver-marker', html: '<div class="marker-inner"></div>', iconSize: [28,28] });
+                                    window._driverReviewDriverMarker = L.marker([dLat, dLon], { icon: driverIcon }).addTo(window.DRIVER_MAP).bindPopup('Driver');
+                                    markersToBounds.push(window._driverReviewDriverMarker.getLatLng());
+                                }
+                                // pickup
+                                if (Number.isFinite(pLat) && Number.isFinite(pLon)) {
+                                    const pickupIcon = L.divIcon({ className: 'pickup-marker', html: '<div class="marker-inner"></div>', iconSize: [24,24] });
+                                    window._driverReviewPickupMarker = L.marker([pLat, pLon], { icon: pickupIcon }).addTo(window.DRIVER_MAP).bindPopup('Pickup');
+                                    markersToBounds.push(window._driverReviewPickupMarker.getLatLng());
+                                }
+                                // destination
+                                if (Number.isFinite(xLat) && Number.isFinite(xLon)) {
+                                    const destIcon = L.divIcon({ className: 'dest-marker', html: '<div class="marker-inner"></div>', iconSize: [24,24] });
+                                    window._driverReviewDestMarker = L.marker([xLat, xLon], { icon: destIcon }).addTo(window.DRIVER_MAP).bindPopup('Destination');
+                                    markersToBounds.push(window._driverReviewDestMarker.getLatLng());
+                                }
+                            } catch(e) { console.warn('Add review markers failed', e); }
+
+                            // fit bounds to route layer plus markers
+                            try {
+                                let bounds = window._driverReviewLayer.getBounds();
+                                if (markersToBounds.length > 0) { markersToBounds.forEach(ll => bounds.extend(ll)); }
+                                window.DRIVER_MAP.fitBounds(bounds, { padding: [40,40] });
+                            } catch(e) { console.warn('Fit bounds failed', e); }
+                            // populate details
+                            const seg = rd.features[0].properties?.segments?.[0];
+                            if (routeDetails) routeDetails.innerHTML = `<strong>Pickup:</strong> ${info.pickup_address || '--'}<br><strong>Destination:</strong> ${info.destination_address || '--'}<br><strong>ETA:</strong> ${seg?Math.ceil(seg.duration/60)+' min':'--'} <strong>Distance:</strong> ${seg?(seg.distance/1000).toFixed(2)+' km':'--'}`;
+                        } else { if (routeDetails) routeDetails.textContent = 'No route geometry returned.'; }
+                    } catch (e) { console.error('Review route error', e); if (routeDetails) routeDetails.textContent = 'Error fetching route.'; }
+                }).catch(e => { console.warn('Failed to fetch route_info', e); }).finally(() => { if (loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden','true'); } });
+            }
+
+            // Expose reviewBooking globally so other scripts or delegated handlers can call it
+            try {
+                window.reviewBooking = reviewBooking;
+                // If any clicks were queued before initialization, process them now
+                if (window._queuedReviewCalls && window._queuedReviewCalls.length) {
+                    const queued = window._queuedReviewCalls.slice();
+                    window._queuedReviewCalls = [];
+                    queued.forEach(bid => {
+                        try { reviewBooking(bid); } catch(e) { console.warn('queued reviewBooking call failed', bid, e); }
+                    });
+                }
+            } catch(e) { /* ignore */ }
+
+            // attach click handlers to review buttons
+            document.querySelectorAll('.review-ride-btn').forEach(btn => {
+                btn.addEventListener('click', (ev) => {
+                    ev.preventDefault(); const bid = btn.getAttribute('data-booking-id'); reviewBooking(bid);
+                });
+            });
+
+            // Delegated click handler fallback: in case buttons are added later or initial binding fails
+            document.addEventListener('click', function(e) {
+                try {
+                    const btn = e.target.closest && e.target.closest('.review-ride-btn');
+                    if (!btn) return;
+                    e.preventDefault(); const bid = btn.getAttribute('data-booking-id'); if (!bid) return;
+                    if (typeof reviewBooking === 'function') reviewBooking(bid);
+                } catch(err) { console.warn('Delegated review click handler failed', err); }
+            });
 
             // Automatic refresh: poll for active booking changes so driver sees assignment without full page reload
             try {

@@ -8,13 +8,33 @@
     <link rel="stylesheet" href="{% static 'user/css/rider_dashboard.css' %}?v=5" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 </head>
-<body>
-    <div class="header">
-        <h1>Rider Dashboard</h1>
-        <a href="{% url 'user:landing' %}" class="logout-btn">Logout</a>
+<body {% if active_bookings and active_bookings|length > 0 %}class="booking-active"{% endif %}>
+    {# Header removed: dashboard title moved out per UI refinement. Logout moved to sidebar icon. #}
+
+    {# Render Django messages so booking validation errors are visible to the rider #}
+    {% if messages %}
+    {# Show non-success messages only so success toasts don't block the legend #}
+    <div class="dashboard-messages" style="position:fixed; top:12px; left:96px; right:16px; z-index:2200; pointer-events:auto;">
+        {% for message in messages %}
+            {% if 'success' not in message.tags %}
+            <div class="message-item" style="background:#fff; padding:10px 12px; border-radius:8px; box-shadow:0 8px 20px rgba(0,0,0,0.08); margin-bottom:8px;">
+                {{ message }}
+            </div>
+            {% endif %}
+        {% endfor %}
     </div>
+    {% endif %}
 
     <div id="map"></div>
+    {# If the rider has any active bookings, show a small pill with a link to the booking detail. This explains why a new booking is blocked. #}
+    {% if active_bookings and active_bookings|length > 0 %}
+    <div class="active-booking-pill" role="status" aria-live="polite">
+        You have {{ active_bookings|length }} active booking{% if active_bookings|length != 1 %}s{% endif %} —
+        {% with first=active_bookings.0 %}
+            <a href="{% url 'booking:booking_detail' first.id %}" class="pill-link">View booking</a>
+        {% endwith %}
+    </div>
+    {% endif %}
     <!-- Route loader (small box) shown only on initial fetch -->
     <div id="route-loader" class="route-loader hidden" aria-hidden="true">
         <div class="spinner" role="status" aria-live="polite" aria-label="Fetching routes"></div>
@@ -27,7 +47,7 @@
     </div>
 
     <div class="container">
-        <div class="sidebar" aria-expanded="false">
+        <div class="sidebar" aria-expanded="true">
             <div class="nav-bar">
                 <div class="nav-top">
                     <div class="brand">TrikeGo</div>
@@ -45,73 +65,16 @@
                     <a class="nav-icon" title="Support" href="#">
                         <img src="{% static 'user/images/support_icon.png' %}" alt="Support">
                     </a>
+                    {# Logout: use a POST form to avoid method issues (some logout endpoints require POST) #}
+                    <form method="post" action="{% url 'user:logout' %}" class="logout-form" style="margin:0; padding:0;">
+                        {% csrf_token %}
+                        <button type="submit" class="nav-icon logout-icon" title="Logout" aria-label="Logout" style="border:none;background:transparent;padding:0;">
+                            <img src="{% static 'user/images/logout.png' %}" alt="Logout">
+                        </button>
+                    </form>
                 </div>
             </div>
-
-            <div class="sidebar-content">
-            <div class="dashboard-profile-card">
-                <h2>Welcome, {{ user.first_name }} {{ user.last_name }}!</h2>
-                <p>Rider ID: {{ user.username }}</p>
-            </div>
-
-            {% if rider_profile %}
-            <div class="dashboard-loyaltypoints-card">
-                <div class="loyalty-points">
-                    <h3>Loyalty Points</h3>
-                    <div class="points-number">{{ rider_profile.loyalty_points }}</div>
-                    <p>Earn points with every ride!</p>
-                </div>
-            </div>
-            {% endif %}
-
-            <!-- Real-time tracking info -->
-            <div class="dashboard-tracking-card" id="tracking-info" style="display:none;">
-                <h3>Live Tracking</h3>
-                <div id="driver-eta">
-                    <p><strong id="eta-label">Time to Pick-up:</strong> <span id="eta-value">Calculating...</span></p>
-                    <p><strong>Distance:</strong> <span id="distance-value">--</span></p>
-                    <p><strong>Last Updated:</strong> <span id="last-update">--</span></p>
-                </div>
-                <div class="tracking-status">
-                    <div class="status-indicator" id="status-indicator"></div>
-                    <span id="tracking-status-text">Driver is on the way</span>
-                </div>
-            </div>
-
-            <div class="dashboard-activebooks-card">
-                <h3>Active Booking</h3>
-                {% if active_bookings %}
-                    <ul class="booking-list">
-                        {% for booking in active_bookings %}
-                            <li class="booking-item" data-booking-id="{{ booking.id }}" {% if booking.driver %}data-booking-driver="{{ booking.driver.id }}"{% endif %}>
-                                <strong>{{ booking.pickup_address }}</strong> → {{ booking.destination_address }}
-                                {% if booking.estimated_arrival %}
-                                <br><small>Est. Arrival: {{ booking.estimated_arrival|date:"H:i" }}</small>
-                                {% endif %}
-                                {% if booking.status == 'pending' %}
-                                <form method="POST" action="{% url 'user:cancel_booking' booking.id %}" style="display:inline;margin-top:8px;">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-danger small" >Cancel Booking</button>
-                                </form>
-                                {% endif %}
-                            </li>
-                        {% endfor %}
-                    </ul>
-                {% else %}
-                    <p>No active bookings at the moment.</p>
-                {% endif %}
-            </div>
-
-            <div class="dashboard-quickaction-card">
-                <h3>Quick Actions</h3>
-                <div class="action-buttons">
-                    <a href="#" class="btn btn-primary">Book Ride</a>
-                    <a href="#" class="btn btn-secondary">Ride History</a>
-                    <a href="#" class="btn btn-success">Payment Methods</a>
-                    <a href="#" class="btn btn-warning">Support</a>
-                </div>
-            </div>
-            </div>
+            {# Sidebar content intentionally removed to keep only the icon rail per UI spec #}
         </div>
 
         <div class="dashboard-booking-card">
@@ -165,25 +128,43 @@
         </div>
     </div>
 
-    <!-- Booking preview card: shows booking summary even if no driver has accepted yet -->
-    <div id="booking-preview-card" class="driver-info-card" style="display:none;" aria-hidden="true">
+    {# If the rider has an active booking, show a small preview card with cancel action. #}
+    {% if active_bookings and active_bookings|length > 0 %}
+    {% with booking=active_bookings.0 %}
+    {# Hidden booking-item for the JS boot logic to discover booking(s) and draw preview/routes #}
+    <div class="booking-item" style="display:none;" data-booking-id="{{ booking.id }}" {% if booking.driver %}data-booking-driver="{{ booking.driver.id }}"{% endif %}>
+        <strong>{{ booking.pickup_address }}</strong> → {{ booking.destination_address }}
+        <span class="booking-status" style="display:none;">{{ booking.status }}</span>
+    </div>
+    {# Only render the preview/cancel card for pending bookings; once accepted we rely on the driver-info-card overlay and client JS to show driver details #}
+    {% if booking.status == 'pending' %}
+    <div id="booking-preview-card" class="driver-info-card" aria-hidden="false">
         <div class="driver-card-inner">
             <div class="driver-details">
-                <div class="driver-name">Booking Preview</div>
+                <div class="driver-name">Active Booking #{{ booking.id }}</div>
                 <div class="driver-meta">
-                    <div><strong>Pickup:</strong> <span id="preview-pickup">--</span></div>
-                    <div><strong>Destination:</strong> <span id="preview-dest">--</span></div>
+                    <div><strong>Pickup:</strong> <span id="preview-pickup">{{ booking.pickup_address }}</span></div>
+                    <div><strong>Destination:</strong> <span id="preview-dest">{{ booking.destination_address }}</span></div>
                 </div>
-                <div class="driver-fare">Estimated Fare: <span id="preview-fare">--</span></div>
+                <div class="driver-fare">Estimated Fare: <span id="preview-fare">{% if booking.fare %}₱{{ booking.fare }}{% else %}--{% endif %}</span></div>
             </div>
             <div class="driver-actions">
-                <form method="POST" id="preview-cancel-form" action="#">
+                <form method="POST" id="preview-cancel-form" action="{% url 'user:cancel_booking' booking.id %}">
                     {% csrf_token %}
                     <button id="preview-cancel-btn" type="submit" class="btn btn-danger" style="color: #fff;">Cancel Booking</button>
                 </form>
             </div>
         </div>
     </div>
+    {% else %}
+    {# non-pending bookings: show a small status indicator in-case the user needs to see status text (not the full preview card) #}
+    <div id="booking-status-summary" class="active-booking-pill" style="display:inline-flex;">
+        <strong>Active Booking #{{ booking.id }}</strong>
+        <span style="margin-left:12px; color:#0b69ff;">Status: {{ booking.get_status_display }}</span>
+    </div>
+    {% endif %}
+    {% endwith %}
+    {% endif %}
 
     <!-- Chat modal for rider -->
     <div id="chatModal" class="chat-modal" style="display:none; position:fixed; right:20px; bottom:20px; width:360px; max-width:90%; background:#fff; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.2); z-index:1200;">

@@ -5,119 +5,149 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Driver Dashboard - TrikeGo</title>
-    <link rel="stylesheet" href="{% static 'user/css/driver_dashboard.css' %}" />
+    <link rel="stylesheet" href="{% static 'user/css/driver_dashboard.css' %}?v=3" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <!-- styles moved to static/user/css/driver_dashboard.css -->
+        <style>
+        /* minimal inline helpers (loader only); layout is driven by static CSS in static/user/css/driver_dashboard.css */
+        /* center the fetching routes loader as an overlay */
+        #driver-route-loader{ position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:2250; background:rgba(255,255,255,0.98); padding:10px 12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.12); display:flex; gap:8px; align-items:center; }
+        #driver-route-loader.hidden{ display:none !important; }
+        #driver-route-loader .spinner{ width:18px; height:18px; border-radius:50%; border:3px solid #e6e6e6; border-top-color:#007bff; animation:spin 1s linear infinite; }
+        @keyframes spin{ to { transform:rotate(360deg);} }
+    </style>
 </head>
 <body {% if active_booking %}data-active-booking-id="{{ active_booking.id }}"{% endif %}>
-    <div class="header">
-        <h1>Driver Dashboard</h1>
-        <a href="{% url 'user:landing' %}" class="logout-btn">Logout</a>
+    {# Compact driver dashboard: map fills main area; compact icon rail on the left; booking overlay pinned over map #}
+
+    <div id="map-container">
+        <div class="map-legend" id="map-legend" aria-hidden="false">
+            <div class="legend-item"><span class="legend-dot driver"></span> Driver</div>
+            <div class="legend-item"><span class="legend-dot pickup"></span> Pickup</div>
+            <div class="legend-item"><span class="legend-dot dest"></span> Destination</div>
+        </div>
+    </div>
+    <div id="driver-route-loader" class="hidden" aria-hidden="true">
+        <div class="spinner" role="status" aria-live="polite" aria-label="Fetching routes"></div>
+        <div class="route-loader-text">Fetching routes…</div>
     </div>
 
     <div class="container">
-        <div class="sidebar">
-            <div class="dashboard-profile-card">
-                <h2>Welcome, {{ user.first_name }} {{ user.last_name }}!</h2>
-                <p>Driver ID: {{ user.username }}</p>
-            </div>
-
-            <div class="dashboard-quickaction-card">
-                <h3>Quick Actions</h3>
-                <div class="action-buttons">
-                    <a href="{% url 'user:driver_active_books' %}" class="btn btn-primary">View My Rides</a>
-                    <a href="#" class="btn btn-secondary">Update Profile</a>
+        <div class="sidebar" aria-expanded="false">
+            <div class="nav-bar">
+                <div class="nav-top">
+                    <div class="brand" style="font-weight:700; font-size:16px; padding:12px;">TrikeGo</div>
                 </div>
-            </div>
-            
-            {% if driver_profile %}
-            <div class="dashboard-profile-card">
-                <h3>Profile</h3>
-                <p><strong>Status:</strong> {{ driver_profile.status }}</p>
-                <p><strong>Verified:</strong> {{ driver_profile.is_verified|yesno:"Yes,No" }}</p>
-            </div>
-            {% endif %}
-
-            {% if active_booking %}
-            <div class="dashboard-tracking-card">
-                <h3>Live ETA</h3>
-                <p><strong id="eta-label">Time to Pick-up:</strong> <span id="eta-value">Calculating...</span></p>
-            </div>
-            <!-- Driver booking card with chat button -->
-            <div class="driver-booking-card" style="margin-top:12px; padding:10px; border:1px solid #e6e6e6; border-radius:8px; background:#fff;">
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-                    <div style="flex:1;">
-                        <div style="font-weight:600;">Booking #{{ active_booking.id }}</div>
-                        <div style="color:#444;">Rider: {{ active_booking.rider.get_full_name|default:active_booking.rider.username }}</div>
-                        <div style="font-size:13px; color:#666; margin-top:6px;">{{ active_booking.pickup_address }} → {{ active_booking.destination_address }}</div>
-                        <div style="font-size:12px; color:#888; margin-top:6px;">Booked: {{ active_booking.booking_time|date:"M d, Y H:i" }}</div>
+                <div class="nav-body">
+                    <div class="nav-center">
+                        <a id="profile-icon" class="nav-icon" title="Profile" href="#" aria-label="Profile">
+                            <img src="{% static 'user/images/account_icon.png' %}" alt="Profile">
+                        </a>
+                        <a id="rides-icon" class="nav-icon" title="Rides" href="#" aria-label="Rides">
+                            <img src="{% static 'user/images/tricycle_icon.png' %}" alt="Rides">
+                        </a>
+                        <a id="payments-icon" class="nav-icon" title="Payments" href="#" aria-label="Payments">
+                            <img src="{% static 'user/images/card_icon.png' %}" alt="Payments">
+                        </a>
+                        <a id="support-icon" class="nav-icon" title="Support" href="#" aria-label="Support">
+                            <img src="{% static 'user/images/support_icon.png' %}" alt="Support">
+                        </a>
                     </div>
-                    <div style="white-space:nowrap;">
-                        <button class="btn btn-primary" onclick="openDriverChatModal({{ active_booking.id }}); return false;">Chat</button>
+
+                    <div class="sidebar-content closed">
+                        <div class="sidebar-main" style="padding:12px;">
+                    <h3>Profile</h3>
+                    <div class="dashboard-profile-card">
+                        <p><strong>{{ user.first_name }} {{ user.last_name }}</strong></p>
+                        <p>Driver ID: {{ user.username }}</p>
+                    </div>
+                    <div style="margin-top:12px;">
+                        <h4>Quick Actions</h4>
+                        <a href="{% url 'user:driver_active_books' %}" class="btn btn-sm btn-outline-primary" style="display:block;margin-bottom:8px;">View My Rides</a>
+                        <a href="#" class="btn btn-sm btn-outline-secondary" style="display:block;">Update Profile</a>
                     </div>
                 </div>
-            </div>
-            {% endif %}
-        </div>
 
-        <div class="main-content">
-            <div class="dashboard-activity-card">
-                <h3>Available Rides</h3>
-                {% if available_rides %}
-                    <ul class="ride-list">
-                        {% for ride in available_rides %}
-                            <li class="ride-item">
-                                <strong>From:</strong> {{ ride.pickup_address }}<br>
-                                <strong>To:</strong> {{ ride.destination_address }}<br>
-                                <small>Requested: {{ ride.booking_time|date:"M d, Y H:i" }}</small>
-                                <div class="ride-actions">
-                                    <button class="btn btn-secondary review-ride-btn" data-booking-id="{{ ride.id }}">
-                                        Review
-                                    </button>
-                                    <form method="POST" action="{% url 'user:accept_ride' ride.id %}" style="display: inline;">
-                                        {% csrf_token %}
-                                        <button type="submit" class="btn btn-success">Accept Ride</button>
-                                    </form>
-                                </div>
-                            </li>
-                        {% endfor %}
-                    </ul>
-                {% else %}
-                    <p>No rides available right now.</p>
-                {% endif %}
-            </div>
-            
-            <div class="dashboard-section">
-                <h2>Ride Preview</h2>
-                <div id="map-container">
-                    <div class="map-legend" id="map-legend-driver" aria-hidden="false">
-                        <div class="legend-item"><span class="legend-dot driver"></span>Driver</div>
-                        <div class="legend-item"><span class="legend-dot pickup"></span>Pickup / Rider</div>
-                        <div class="legend-item"><span class="legend-dot dest"></span>Destination</div>
+                <div class="sidebar-rides" style="padding:12px; display:flex; flex-direction:column; height:100%">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                        <strong>Available Rides</strong>
+                    </div>
+                    <div id="active-rides-list" style="flex:1; overflow:auto;">
+                        {% if available_rides %}
+                            <ul style="list-style:none;padding:0;margin:0;">
+                                {% for ride in available_rides %}
+                                <li>
+                                    <div class="ride-card">
+                                        <div class="ride-title">{{ ride.rider.get_full_name|default:ride.rider.username }}</div>
+                                        <div class="ride-meta">Pickup: {{ ride.pickup_address|truncatechars:60 }}</div>
+                                        <div class="ride-meta">Dropoff: {{ ride.destination_address|truncatechars:60 }}</div>
+                                    <div style="margin-top:6px; display:flex; gap:6px;">
+                                        <button class="btn btn-secondary review-ride-btn" data-booking-id="{{ ride.id }}" onclick="window.reviewBooking && window.reviewBooking({{ ride.id }});">Review</button>
+                                        <form method="POST" action="{% url 'user:accept_ride' ride.id %}" style="display:inline;">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-success">Accept</button>
+                                        </form>
+                                    </div>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p style="padding:8px;">No rides available</p>
+                        {% endif %}
+                    </div>
+                    <div class="rides-back-container">
+                        <a href="#" id="rides-back-bottom" class="rides-back-link">Back</a>
                     </div>
                 </div>
-                <div id="route-details">Click 'Review' on a ride to see the route details here.</div>
-                <!-- Inline loader for route fetches (small box) -->
-                <div id="driver-route-loader" class="route-loader hidden" aria-hidden="true">
-                    <div class="spinner" role="status" aria-live="polite" aria-label="Fetching routes"></div>
-                    <div class="route-loader-text">Fetching routes</div>
                 </div>
-                <div id="active-trip-eta" style="display:none; margin-top: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px;">
-                    <p><strong id="eta-label">Time to Pick-up:</strong> <span id="eta-value">Calculating...</span></p>
+
+                <div style="padding:12px;">
+                    <form method="post" action="{% url 'user:logout' %}" class="logout-form" style="margin:0; padding:0;">
+                        {% csrf_token %}
+                        <button type="submit" class="nav-icon logout-icon" title="Logout" aria-label="Logout" style="border:none;background:transparent;padding:0;">
+                            <img src="{% static 'user/images/logout.png' %}" alt="Logout">
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>
+
+        {% if active_booking %}
+        <div id="driver-booking-card" class="driver-info-card" aria-hidden="false" style="position:fixed; right:16px; bottom:20px; z-index:2200; width:320px;">
+            <div class="driver-card-inner" style="padding:12px; background:#fff; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.12);">
+                <div class="driver-avatar" style="float:left; width:56px; height:56px; background:#eee; border-radius:999px; margin-right:12px;"></div>
+                <div class="driver-details">
+                    <div class="driver-name">Active Booking #{{ active_booking.id }}</div>
+                    <div class="driver-meta">Rider: {{ active_booking.rider.get_full_name|default:active_booking.rider.username }}</div>
+                    <div class="driver-info-extra">
+                        <div><strong>Pickup:</strong> <span id="booking-pickup">{{ active_booking.pickup_address }}</span></div>
+                        <div><strong>Destination:</strong> <span id="booking-dest">{{ active_booking.destination_address }}</span></div>
+                        <div><strong>Distance:</strong> <span id="booking-distance">-- km</span></div>
+                    </div>
+                </div>
+                <div style="clear:both; margin-top:12px;">
+                    <button id="complete-booking-btn" class="btn btn-success" formmethod="post" formaction="{% url 'user:complete_booking' active_booking.id %}">Complete</button>
+                    <form method="POST" action="{% url 'user:cancel_booking' active_booking.id %}" style="display:inline; margin-left:8px;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger">Cancel</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
+        // Runtime configuration for driver_dashboard JS
         window.DRIVER_DASH_CONFIG = {
             ORS_API_KEY: '{{ settings.OPENROUTESERVICE_API_KEY }}',
-            userId: {{ user.id }},
-            activeBookingId: {% if active_booking %}{{ active_booking.id }}{% else %}null{% endif %},
-            csrfToken: '{{ csrf_token }}'
+            userId: {{ user.id|default:'null' }},
+            csrfToken: '{{ csrf_token }}',
+            activeBookingId: {% if active_booking %}{{ active_booking.id }}{% else %}null{% endif %}
         };
     </script>
-    <script src="{% static 'booking/js/driver_dashboard.js' %}?v=1"></script>
+    <script src="{% static 'booking/js/driver_dashboard.js' %}?v=2"></script>
+
 </body>
 </html>
