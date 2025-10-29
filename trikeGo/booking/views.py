@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden
 from django.utils import timezone
 from .forms import BookingForm
 from .models import Booking
-from apps.user.models import CustomUser
+from user.models import CustomUser
 
 @login_required
 @require_POST # This view now only accepts POST requests from the form

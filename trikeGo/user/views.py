@@ -9,15 +9,15 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from .forms import DriverRegistrationForm, RiderRegistrationForm, LoginForm, DriverVerificationForm, TricycleForm
 from .models import Driver, Rider, CustomUser, Tricycle
-from apps.booking.forms import BookingForm
+from booking.forms import BookingForm
 from datetime import date
-from apps.booking.models import Booking
+from booking.models import Booking
 import json
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
-from apps.booking.services import RoutingService
-from apps.booking.models import DriverLocation
+from booking.services import RoutingService
+from booking.models import DriverLocation
 from datetime import timedelta
 from django.conf import settings
 from decimal import Decimal
@@ -546,7 +546,7 @@ def get_route_info(request, booking_id):
     tricycle_data = None
     try:
         # Prefer explicit Tricycle model if available
-        from apps.user.models import Tricycle
+        from user.models import Tricycle
         try:
             # Some implementations may link Tricycle to Driver (model instance) or to the CustomUser.
             trike = Tricycle.objects.filter(driver=driver_profile).first()
@@ -628,7 +628,7 @@ def get_route_info(request, booking_id):
         # If the Driver model doesn't have current coords, try to read the real-time
         # DriverLocation (apps.booking.models.DriverLocation) as a fallback source.
         try:
-            from apps.booking.models import DriverLocation as _DriverLocation
+            from booking.models import DriverLocation as _DriverLocation
             dl = _DriverLocation.objects.filter(driver=driver_profile.user).first()
             if dl:
                 # Only set if missing on the driver_profile

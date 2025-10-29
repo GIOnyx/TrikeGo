@@ -5,7 +5,7 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 
 from .models import ChatMessage
-from apps.booking.models import Booking
+from booking.models import Booking
 
 
 @api_view(['GET'])

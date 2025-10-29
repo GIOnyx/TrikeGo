@@ -1,6 +1,6 @@
 from django.db import models
-from apps.user.models import CustomUser
-from apps.booking.models import Booking
+from user.models import CustomUser
+from booking.models import Booking
 
 
 class ChatMessage(models.Model):
