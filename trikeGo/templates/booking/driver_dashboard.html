@@ -113,25 +113,32 @@
         </div>
 
         {% if active_booking %}
-        <div id="driver-booking-card" class="driver-info-card" aria-hidden="false" style="position:fixed; right:16px; bottom:20px; z-index:2200; width:320px;">
-            <div class="driver-card-inner" style="padding:12px; background:#fff; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.12);">
-                <div class="driver-avatar" style="float:left; width:56px; height:56px; background:#eee; border-radius:999px; margin-right:12px;"></div>
-                <div class="driver-details">
-                    <div class="driver-name">Active Booking #{{ active_booking.id }}</div>
-                    <div class="driver-meta">Rider: {{ active_booking.rider.get_full_name|default:active_booking.rider.username }}</div>
-                    <div class="driver-info-extra">
-                        <div><strong>Pickup:</strong> <span id="booking-pickup">{{ active_booking.pickup_address }}</span></div>
-                        <div><strong>Destination:</strong> <span id="booking-dest">{{ active_booking.destination_address }}</span></div>
-                        <div><strong>Distance:</strong> <span id="booking-distance">-- km</span></div>
-                    </div>
-                </div>
-                <div style="clear:both; margin-top:12px;">
-                    <button id="complete-booking-btn" class="btn btn-success" formmethod="post" formaction="{% url 'user:complete_booking' active_booking.id %}">Complete</button>
-                    <form method="POST" action="{% url 'user:cancel_booking' active_booking.id %}" style="display:inline; margin-left:8px;">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-danger">Cancel</button>
-                    </form>
-                </div>
+    <div id="driver-booking-card" class="driver-info-card" aria-hidden="false">
+            <div class="driver-card-inner" style="padding:12px; background:#f9fafc; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.12);">
+                        <div style="display:flex; gap:12px; align-items:flex-start;">
+                            <div class="driver-avatar" style="width:56px; height:56px; background:#eee; border-radius:999px; flex:0 0 56px;"></div>
+                            <div class="driver-details" style="flex:1;">
+                                <div class="driver-top" style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                                    <div>
+                                        <div class="driver-name">Active Booking #{{ active_booking.id }}</div>
+                                        <div class="driver-meta">Rider: {{ active_booking.rider.get_full_name|default:active_booking.rider.username }}</div>
+                                    </div>
+                                    <div style="flex:0 0 auto;">
+                                        <!-- Chat button moved to the top-right of the card for quick access -->
+                                        <button id="chat-booking-btn" class="chat-btn" type="button" title="Chat with rider" onclick="(function(){ try{ window.openDriverChatModal && window.openDriverChatModal({{ active_booking.id }}); }catch(e){console.warn(e);} })()">Chat</button>
+                                    </div>
+                                </div>
+                                <div class="driver-info-extra" style="margin-top:8px;">
+                                    <div><strong>Pickup:</strong> <span id="booking-pickup">{{ active_booking.pickup_address }}</span></div>
+                                    <div><strong>Destination:</strong> <span id="booking-dest">{{ active_booking.destination_address }}</span></div>
+                                    <div><strong>Distance:</strong> <span id="booking-distance">-- km</span></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="clear:both; margin-top:12px; display:flex; gap:8px; align-items:center;">
+                            <button id="complete-booking-btn" class="btn btn-success" formmethod="post" formaction="{% url 'user:complete_booking' active_booking.id %}">Complete</button>
+                            <button id="cancel-booking-btn" type="button" class="btn btn-danger" data-cancel-url="{% url 'user:cancel_booking' active_booking.id %}">Cancel</button>
+                        </div>
             </div>
         </div>
         {% endif %}
