@@ -5,16 +5,22 @@ Django settings for trikeGo project.
 from dotenv import load_dotenv
 load_dotenv()
 import os
+import dj_database_url 
+from dotenv import load_dotenv # Already there
+load_dotenv() # Already there
 from supabase import create_client
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-kt-n$)+@l$30(12vgeq&gr+z94g1^6=f)@@7irh%9y^4t@+htw'
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
-DEBUG = True
+# Reads the DEBUG env var, defaults to False if not set. Handles 'True'/'False' strings.
+DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
 ALLOWED_HOSTS = []
+CSRF_TRUSTED_ORIGINS = ['http://localhost:8000', 'http://TrikeGo.com']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -31,6 +37,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -38,6 +45,9 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 ROOT_URLCONF = 'trikeGo.urls'
 
@@ -61,14 +71,11 @@ WSGI_APPLICATION = 'trikeGo.wsgi.application'
 os.environ["PGOPTIONS"] = "-c inet_family=inet"
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'postgres',
-        'USER': 'postgres.fyfehaxsgpjeneljrmnd',
-        'PASSWORD': 'TrikeGo-databasePassword',
-        'HOST': 'aws-1-ap-southeast-1.pooler.supabase.com',
-        'PORT': '5432',
-    }
+    'default': dj_database_url.config(
+        # Feel free to specify SSL requirements if needed
+        conn_max_age=600,
+        # ssl_require=True # Uncomment if Render DB requires SSL
+    )
 }
 
 REST_FRAMEWORK = {
