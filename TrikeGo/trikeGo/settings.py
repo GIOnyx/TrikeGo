@@ -19,8 +19,25 @@ SECRET_KEY = os.environ.get('SECRET_KEY')
 # Reads the DEBUG env var, defaults to False if not set. Handles 'True'/'False' strings.
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = []
-CSRF_TRUSTED_ORIGINS = ['http://localhost:8000', 'http://TrikeGo.com']
+# settings.py
+
+# ... other imports ...
+
+# Dynamic Hostname Configuration for Render
+ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+CSRF_TRUSTED_ORIGINS = ['http://localhost:8000', 'http://127.0.0.1:8000'] # Add 127.0.0.1 here too
+
+RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+    # Add the render external hostname to CSRF trusted origins (must include scheme)
+    CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")
+
+# Allow any Render-provided onrender.com hostname (subdomains) in ALLOWED_HOSTS so deployments
+# don't need to set RENDER_EXTERNAL_HOSTNAME for simple cases. This uses the leading dot pattern
+# which Django's ALLOWED_HOSTS accepts to match subdomains.
+ALLOWED_HOSTS.append('.onrender.com')
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -48,6 +65,22 @@ MIDDLEWARE = [
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# If we're running behind a proxy (Render), respect X-Forwarded-Proto so Django knows when
+# requests are HTTPS. This is important for secure cookies and redirects.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Production security settings: enable when DEBUG is False
+if not DEBUG:
+    # Redirect HTTP -> HTTPS
+    SECURE_SSL_REDIRECT = True
+    # Secure cookies
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # HSTS: tell browsers to always use HTTPS (set reasonably long duration)
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 ROOT_URLCONF = 'trikeGo.urls'
 
