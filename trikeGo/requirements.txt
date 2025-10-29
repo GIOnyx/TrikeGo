@@ -7,6 +7,6 @@ channels>=4.0.0
 channels-redis>=4.1.0
 openrouteservice>=2.3.3
 requests>=2.31.0
+dj-database-url>=1.2.0
 gunicorn==23.0.0
 whitenoise==6.8.2
-dj-database-url==1.2.0
