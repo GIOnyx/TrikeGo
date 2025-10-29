@@ -259,3 +259,43 @@ body.show-rides .logout-form { display: none !important; }
 .sidebar-content .sidebar-rides .btn { font-size: 13px; padding: 6px 8px; border-radius: 6px; }
 .sidebar-content .sidebar-rides .btn.btn-success { background: #2ecc71; }
 .sidebar-content .sidebar-rides .btn.btn-secondary { background: #6c757d; }
+
+/* Driver booking card styling (match rider card) */
+/* Position the booking card so it sits to the right of the left rail. Use calc() so
+   it respects the compact rail (72px) and the expanded rail (320px) via body.sidebar-expanded. */
+.driver-info-card {
+  position: fixed;
+  left: calc(72px + 16px); /* compact rail + padding */
+  bottom: 20px;
+  z-index: 2200;
+  width: 320px;
+  margin-left: 20px;
+}
+body.sidebar-expanded .driver-info-card { left: calc(320px + 16px); }
+
+.driver-card-inner { background: #f9fafc; color: #0b2638; border-radius:8px; padding:12px; box-shadow:0 8px 24px rgba(0,0,0,0.12); }
+.driver-card-inner .driver-name { font-weight: 700; font-size: 15px; color: #0b2638; }
+.driver-card-inner .driver-meta { color: #34495e; font-size: 13px; }
+.driver-card-inner .btn { font-size: 13px; }
+
+/* Top row layout inside the card (name + chat button) */
+.driver-card-inner .driver-top { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+.driver-card-inner .driver-top .driver-name { margin:0; }
+
+/* High-contrast chat button placed top-right */
+.chat-btn {
+  background: #0b63d6; /* stronger blue */
+  color: #ffffff;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-weight:600;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(11,99,214,0.12);
+}
+.chat-btn:hover { background:#0954b2; }
+
+/* Ensure booking card sits above map on small screens as well */
+@media (max-width: 800px) {
+  .driver-info-card { left: 8px !important; right: 8px !important; width: auto !important; }
+}

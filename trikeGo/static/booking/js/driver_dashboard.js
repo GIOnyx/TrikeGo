@@ -354,6 +354,30 @@
                 });
             });
 
+            // Cancel booking handler: use fetch POST to avoid nested form issues
+            document.addEventListener('click', function(e) {
+                try {
+                    const cb = e.target.closest && e.target.closest('#cancel-booking-btn');
+                    if (!cb) return;
+                    e.preventDefault();
+                    const url = cb.getAttribute('data-cancel-url');
+                    if (!url) { alert('Cancel URL missing'); return; }
+                    // simple getCookie utility
+                    function getCookie(name){ let cookieValue = null; if (document.cookie && document.cookie !== '') { const cookies = document.cookie.split(';'); for (let i=0;i<cookies.length;i++){ const cookie = cookies[i].trim(); if (cookie.substring(0, name.length+1) === (name + '=')) { cookieValue = decodeURIComponent(cookie.substring(name.length+1)); break; } } } return cookieValue; }
+                    const csrf = getCookie('csrftoken');
+                    cb.disabled = true;
+                    fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': csrf } }).then(res => {
+                        if (res.ok) {
+                            // reload to refresh UI
+                            window.location.reload();
+                        } else {
+                            cb.disabled = false;
+                            res.text().then(t => { alert('Cancel failed: ' + (t || res.statusText)); });
+                        }
+                    }).catch(err => { cb.disabled = false; alert('Network error when cancelling'); console.warn(err); });
+                } catch(err) { console.warn('cancel handler', err); }
+            });
+
             // Delegated click handler fallback: in case buttons are added later or initial binding fails
             document.addEventListener('click', function(e) {
                 try {
