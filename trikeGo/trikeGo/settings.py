@@ -7,14 +7,20 @@ load_dotenv()
 import os
 from supabase import create_client
 from pathlib import Path
+import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+\
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
-SECRET_KEY = 'django-insecure-kt-n$)+@l$30(12vgeq&gr+z94g1^6=f)@@7irh%9y^4t@+htw'
+# Set to 'False' by default, Render will set this env var to 'False'
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-DEBUG = True
-
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.1.7']
+# In Render, set an env var 'ALLOWED_HOSTS' to your .onrender.com URL
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
+# Add 'localhost' and '127.0.0.1' if you still want local dev to work
+if DEBUG:
+    ALLOWED_HOSTS.extend(['localhost', '127.0.0.1'])
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -31,6 +37,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -61,15 +68,14 @@ WSGI_APPLICATION = 'trikeGo.wsgi.application'
 os.environ["PGOPTIONS"] = "-c inet_family=inet"
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'postgres',
-        'USER': 'postgres.fyfehaxsgpjeneljrmnd',
-        'PASSWORD': 'TrikeGo-databasePassword',
-        'HOST': 'aws-1-ap-southeast-1.pooler.supabase.com',
-        'PORT': '5432',
-    }
+    'default': dj_database_url.config(
+        # Fallback to your local DB if DATABASE_URL isn't set
+        default='postgresql://postgres.fyfehaxsgpjeneljrmnd:TrikeGo-databasePassword@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres'
+    )
 }
+# Ensure it respects Supabase/Render's SSL requirements if any
+if 'DATABASE_URL' in os.environ:
+    DATABASES['default']['OPTIONS'] = {'sslmode': 'require'}
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
