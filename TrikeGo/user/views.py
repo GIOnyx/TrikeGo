@@ -26,6 +26,10 @@ from decimal import Decimal
 from django.contrib.auth.views import redirect_to_login
 from django.contrib.auth import logout as auth_logout
 from django.views.decorators.csrf import csrf_protect
+try:
+    from booking.tasks import compute_and_cache_route
+except Exception:
+    compute_and_cache_route = None
 
 
 class LandingPage(View):
@@ -235,6 +239,12 @@ def accept_ride(request, booking_id):
     
     booking.save()
     messages.success(request, f"You have accepted the ride from {booking.pickup_address} to {booking.destination_address}.")
+    # Schedule an asynchronous task to compute and cache route information (non-blocking)
+    try:
+        if compute_and_cache_route:
+            compute_and_cache_route.delay(booking.id)
+    except Exception:
+        pass
     return redirect('user:driver_dashboard')
 
 class DriverActiveBookings(View):
