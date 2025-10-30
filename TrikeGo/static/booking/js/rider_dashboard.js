@@ -107,9 +107,10 @@
         chatModal.scrollIntoView({ behavior: 'smooth' });
         if (chatModalTitle) chatModalTitle.textContent = `Chat (Booking ${bookingId})`;
         loadModalMessages();
-        if (!_chatModalBookingId) return;
-        if (window._chatModalPolling) clearInterval(window._chatModalPolling);
-        window._chatModalPolling = setInterval(loadModalMessages, 3000);
+    if (!_chatModalBookingId) return;
+    if (window._chatModalPolling) clearInterval(window._chatModalPolling);
+    // Poll less often for chat; consider switching to WebSockets (Channels) in production
+    window._chatModalPolling = setInterval(loadModalMessages, 6000);
     }
 
     function closeChatModal() { if (!chatModal) return; chatModal.style.display = 'none'; _chatModalBookingId = null; if (window._chatModalPolling) { clearInterval(window._chatModalPolling); window._chatModalPolling = null; } }
@@ -487,8 +488,8 @@
 
                         updateAll(bookingId);
                         if (trackingInterval) clearInterval(trackingInterval);
-                        // Poll less aggressively to avoid hitting ORS rate limits; update route every 8s
-                        trackingInterval = setInterval(() => updateAll(bookingId), 8000);
+                        // Poll less aggressively to avoid hitting ORS rate limits; update route every 12s
+                        trackingInterval = setInterval(() => updateAll(bookingId), 12000);
             }
 
             // Booking preview and tracking boot
@@ -598,9 +599,9 @@
                         }
                     } catch(e) { console.warn('pollBookingItems failed', e); }
                 }
-                // Run immediately and then periodically
+                // Run immediately and then periodically (reduced frequency to lower load)
                 pollBookingItems();
-                setInterval(pollBookingItems, 5000);
+                setInterval(pollBookingItems, 10000);
             } catch(e) { /* non-critical */ }
 
             // Wire Chat button in driver-info-card to open chat for current tracked booking

@@ -76,6 +76,8 @@ DATABASES = {
 # Ensure it respects Supabase/Render's SSL requirements if any
 if 'DATABASE_URL' in os.environ:
     DATABASES['default']['OPTIONS'] = {'sslmode': 'require'}
+# Keep DB connections open for a short period to reduce overhead in production
+DATABASES['default']['CONN_MAX_AGE'] = int(os.environ.get('CONN_MAX_AGE', 600))
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -88,6 +90,49 @@ REST_FRAMEWORK = {
 
 # OpenRouteService API Configuration
 OPENROUTESERVICE_API_KEY = os.environ.get('OPENROUTESERVICE_API_KEY', 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImIyOThlMTFhZDk5MzRmOGVhY2NmOTAxMGQzM2ZlYWJhIiwiaCI6Im11cm11cjY0In0=')
+
+# Caching: prefer Redis when a cache location is provided (e.g., in Render/production).
+# Fallback to LocMemCache for local development.
+if os.environ.get('DJANGO_CACHE_LOCATION') or os.environ.get('REDIS_URL'):
+    CACHE_LOC = os.environ.get('DJANGO_CACHE_LOCATION') or os.environ.get('REDIS_URL')
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': CACHE_LOC,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                # Don't raise exceptions on cache failures in production; degrade gracefully
+                'IGNORE_EXCEPTIONS': True,
+            }
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': os.environ.get('DJANGO_CACHE_BACKEND', 'django.core.cache.backends.locmem.LocMemCache'),
+            'LOCATION': os.environ.get('DJANGO_CACHE_LOCATION', 'unique-snowflake'),
+        }
+    }
+
+# If Redis is available, prefer cached DB-backed sessions and configure Channels to use it.
+REDIS_URL = os.environ.get('DJANGO_CACHE_LOCATION') or os.environ.get('REDIS_URL')
+if REDIS_URL:
+    # Use cached DB sessions so session data is fast and persistent across workers
+    SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
+
+    # Channels: configure Redis channel layer if Channels is installed
+    try:
+        CHANNEL_LAYERS = {
+            'default': {
+                'BACKEND': 'channels_redis.core.RedisChannelLayer',
+                'CONFIG': {
+                    'hosts': [REDIS_URL],
+                },
+            },
+        }
+    except Exception:
+        # If channels_redis isn't available in the environment, do nothing.
+        CHANNEL_LAYERS = {}
 
 AUTH_USER_MODEL = "user.CustomUser"
 LOGIN_URL = 'user:landing'
@@ -117,6 +162,10 @@ STATICFILES_DIRS = [
     os.path.join(BASE_DIR, "static"),
 ]
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+
+# Use WhiteNoise compressed manifest storage in production for far-future caching and compression
+if not DEBUG:
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

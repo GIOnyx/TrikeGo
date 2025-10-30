@@ -73,6 +73,33 @@ python manage.py runserver
 ```
 The application will be available at: http://127.0.0.1:8000/
 
+### Production: Redis (caching & Channels)
+
+For production deployments we strongly recommend using Redis for Django caching and for Channels (WebSockets).
+
+1. Provision a Redis instance (Render Redis addon, AWS Elasticache, or similar).
+2. Set one of these environment variables in your host:
+	- `DJANGO_CACHE_LOCATION` (preferred) — e.g. `redis://:password@redis-host:6379/0`
+	- or `REDIS_URL` — same format.
+3. (Optional) Tune `ROUTE_CACHE_TTL` in env to adjust how long route info is cached (default 15s).
+4. Install dependencies and restart the app. The project will automatically use Redis when the env variable is present.
+
+Local testing with Docker Compose (optional):
+
+1. Start a local Redis container:
+
+```powershell
+docker run -d --name trikego-redis -p 6379:6379 redis:7-alpine
+```
+
+2. Set `DJANGO_CACHE_LOCATION=redis://127.0.0.1:6379/0` in `.env` (or export in your shell) and run the server.
+
+Collect static files for production:
+
+```powershell
+python manage.py collectstatic --noinput
+```
+
 ---
 ## Team Members
 
