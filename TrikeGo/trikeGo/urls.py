@@ -19,7 +19,10 @@ Including another URLconf
 # In trikeGo/trikeGo/urls.py
 
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
+from django.conf import settings
+import os
+from django.views.static import serve
 
 urlpatterns = [
     # Core Django URLs
@@ -32,3 +35,14 @@ urlpatterns = [
     # Chat API and views
     path('chat/', include('chat.urls')),
 ]
+
+# Development helper: serve static files directly from the `static/` dirs when
+# DEBUG=True or when the environment variable SERVE_STATIC_ALWAYS=true. This
+# avoids running `collectstatic` for quick local testing. Do NOT enable this
+# in production.
+if settings.DEBUG or os.environ.get('SERVE_STATIC_ALWAYS', '').lower() == 'true':
+    # Prefer STATICFILES_DIRS if available, else fallback to STATIC_ROOT
+    docroot = settings.STATICFILES_DIRS[0] if getattr(settings, 'STATICFILES_DIRS', None) else settings.STATIC_ROOT
+    urlpatterns += [
+        re_path(r'^static/(?P<path>.*)$', serve, {'document_root': docroot}),
+    ]

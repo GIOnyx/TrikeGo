@@ -11,3 +11,4 @@ gunicorn==23.0.0
 whitenoise==6.8.2
 dj_database_url
 django-redis>=5.2.0
+celery>=5.3.0

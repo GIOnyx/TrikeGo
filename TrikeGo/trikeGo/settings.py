@@ -23,6 +23,7 @@ if DEBUG:
     ALLOWED_HOSTS.extend(['localhost', '127.0.0.1'])
 
 INSTALLED_APPS = [
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -64,6 +65,9 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'trikeGo.wsgi.application'
+
+# ASGI app for Channels
+ASGI_APPLICATION = 'trikeGo.asgi.application'
 
 os.environ["PGOPTIONS"] = "-c inet_family=inet"
 
@@ -133,6 +137,9 @@ if REDIS_URL:
     except Exception:
         # If channels_redis isn't available in the environment, do nothing.
         CHANNEL_LAYERS = {}
+
+# Celery broker: prefer explicit env var, otherwise use Redis URL when available
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') or REDIS_URL or 'redis://localhost:6379/0'
 
 AUTH_USER_MODEL = "user.CustomUser"
 LOGIN_URL = 'user:landing'

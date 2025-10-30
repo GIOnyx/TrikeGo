@@ -54,6 +54,15 @@ class Booking(models.Model):
     def is_active(self):
         return self.status in ['pending', 'accepted', 'on_the_way', 'started']
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['driver']),
+            models.Index(fields=['rider']),
+            models.Index(fields=['booking_time']),
+            models.Index(fields=['driver', 'status']),
+        ]
+
 
 class DriverLocation(models.Model):
     """Track real-time driver locations"""
