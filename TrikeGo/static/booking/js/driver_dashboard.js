@@ -149,7 +149,8 @@
         }
     refreshEtaAndRoute();
     // Poll less aggressively to reduce ORS calls and avoid rate limits
-    setInterval(refreshEtaAndRoute, 8000);
+    // Increase interval; server-side caches route_info to reduce external ORS calls
+    setInterval(refreshEtaAndRoute, 12000);
     }
 
     // Driver chat modal and helpers
@@ -178,7 +179,7 @@
             try { const newest = container.lastElementChild; container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }); if (newest) { newest.classList.add('flash-animate'); setTimeout(() => newest.classList.remove('flash-animate'), 900); } } catch(e) { container.scrollTop = container.scrollHeight; }
         }
 
-        function openDriverChatModal(bookingId) { _driverChatBookingId = bookingId; const el = document.getElementById('driverChatModal'); el.style.display = 'block'; document.getElementById('driverChatTitle').textContent = `Chat (Booking ${bookingId})`; loadDriverMessages(); _driverChatPolling = setInterval(loadDriverMessages, 3000); }
+    function openDriverChatModal(bookingId) { _driverChatBookingId = bookingId; const el = document.getElementById('driverChatModal'); el.style.display = 'block'; document.getElementById('driverChatTitle').textContent = `Chat (Booking ${bookingId})`; loadDriverMessages(); /* poll less often; consider switching to WebSockets in production */ _driverChatPolling = setInterval(loadDriverMessages, 6000); }
         function closeDriverChatModal() { const el = document.getElementById('driverChatModal'); el.style.display = 'none'; _driverChatBookingId = null; if (_driverChatPolling) { clearInterval(_driverChatPolling); _driverChatPolling = null; } }
 
         // Attach events
@@ -404,8 +405,8 @@
                         }
                     } catch(e) { console.warn('pollDriverActiveBooking failed', e); }
                 }
-                // Poll every 5 seconds
-                setInterval(pollDriverActiveBooking, 5000);
+                // Poll less frequently to reduce load (server returns active booking quickly)
+                setInterval(pollDriverActiveBooking, 10000);
             } catch(e) {}
         } catch (e) { console.warn('Driver map init failed', e); }
     });

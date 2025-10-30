@@ -86,9 +86,9 @@
                 .catch(err => { console.error('Failed to load messages', err); messagesEl.innerHTML = '<p class="muted">Unable to load messages.</p>'; });
         }
 
-        // Initial load & polling
-        loadMessages();
-        setInterval(loadMessages, 3000);
+    // Initial load & polling (reduced frequency to lower server load)
+    loadMessages();
+    setInterval(loadMessages, 6000);
 
         chatForm.addEventListener('submit', function(ev) {
             ev.preventDefault();

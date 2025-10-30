@@ -14,6 +14,8 @@ from datetime import date
 from booking.models import Booking
 import json
 from django.http import JsonResponse
+from django.core.cache import cache
+import os
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
 from booking.services import RoutingService
@@ -466,6 +468,18 @@ def update_driver_location(request):
         if lat is None or lon is None:
             return JsonResponse({'status': 'error', 'message': 'Missing lat/lon.'}, status=400)
         Driver.objects.filter(user=request.user).update(current_latitude=lat, current_longitude=lon)
+        # Invalidate cached route info for any active booking assigned to this driver
+        try:
+            from booking.models import Booking as _Booking
+            active_bookings = _Booking.objects.filter(driver=request.user, status__in=['accepted', 'on_the_way', 'started']).values_list('id', flat=True)
+            for bid in active_bookings:
+                try:
+                    cache.delete(f'route_info_{bid}')
+                except Exception:
+                    pass
+        except Exception:
+            # If booking model unavailable or cache deletion fails, continue silently
+            pass
         return JsonResponse({'status': 'success'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
@@ -512,6 +526,16 @@ def get_route_info(request, booking_id):
         # otherwise redirect to login page (preserve next)
         return redirect_to_login(request.get_full_path())
     booking = get_object_or_404(Booking, id=booking_id)
+
+    # Try to serve a cached route_info payload to reduce repeated ORS calls
+    cache_key = f'route_info_{booking_id}'
+    try:
+        cached = cache.get(cache_key)
+        if cached:
+            return JsonResponse(cached)
+    except Exception:
+        # If cache is unavailable, continue and compute normally
+        cached = None
     
     # Allow: drivers to preview using their own current location; riders to view for their own booking
     if request.user.trikego_user == 'D':
@@ -654,7 +678,7 @@ def get_route_info(request, booking_id):
             driver_info['plate'] = tricycle_data.get('plate_number')
             driver_info['color'] = tricycle_data.get('color')
 
-    return JsonResponse({
+    response_data = {
         'status': 'success',
         'booking_status': booking.status,
         'driver': driver_info,
@@ -671,7 +695,15 @@ def get_route_info(request, booking_id):
         'route_payload': route_payload,
         'pickup_to_destination_km': pickup_to_dest_km,
         'driver_to_pickup_km': driver_to_pickup_km,
-    })
+    }
+
+    # Cache the response briefly to reduce repeated ORS calls from many clients.
+    try:
+        cache.set(cache_key, response_data, timeout=int(os.environ.get('ROUTE_CACHE_TTL', 15)))
+    except Exception:
+        pass
+
+    return JsonResponse(response_data)
 
 @login_required
 def get_driver_active_booking(request):
