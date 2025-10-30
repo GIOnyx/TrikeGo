@@ -136,8 +136,11 @@
                             </div>
                         </div>
                         <div style="clear:both; margin-top:12px; display:flex; gap:8px; align-items:center;">
-                            <button id="complete-booking-btn" class="btn btn-success" formmethod="post" formaction="{% url 'user:complete_booking' active_booking.id %}">Complete</button>
-                            <button id="cancel-booking-btn" type="button" class="btn btn-danger" data-cancel-url="{% url 'user:cancel_booking' active_booking.id %}">Cancel</button>
+                            <form method="post" action="{% url 'user:complete_booking' active_booking.id %}" style="display:inline; margin:0;">
+                                {% csrf_token %}
+                                <button id="complete-booking-btn" type="submit" class="btn btn-success">Complete</button>
+                            </form>
+                            <button id="cancel-booking-btn" type="button" class="btn btn-danger" data-cancel-url="{% url 'user:cancel_accepted_booking' active_booking.id %}">Cancel</button>
                         </div>
             </div>
         </div>
