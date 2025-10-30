@@ -9,3 +9,4 @@ openrouteservice>=2.3.3
 requests>=2.31.0
 gunicorn==23.0.0
 whitenoise==6.8.2
+dj_database_url
