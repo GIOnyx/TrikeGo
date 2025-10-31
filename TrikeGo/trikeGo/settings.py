@@ -73,31 +73,15 @@ os.environ["PGOPTIONS"] = "-c inet_family=inet"
 
 DATABASES = {
     'default': dj_database_url.config(
-        # Fallback to your local DB if DATABASE_URL isn't set. Defaults to Supabase pooler.
+        # Fallback to your local DB if DATABASE_URL isn't set
         default='postgresql://postgres.fyfehaxsgpjeneljrmnd:TrikeGo-databasePassword@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres'
     )
 }
-
-def _maybe_use_supabase_direct(db_settings):
-    """Optionally swap the Supabase pooler for the direct host when explicitly requested."""
-    if not isinstance(db_settings, dict):
-        return db_settings
-
-    if os.environ.get('SUPABASE_DIRECT_HOST'):
-        direct_host = os.environ['SUPABASE_DIRECT_HOST']
-        db_settings['HOST'] = direct_host
-        db_settings['USER'] = os.environ.get('SUPABASE_DIRECT_USER', db_settings.get('USER', 'postgres'))
-        return db_settings
-
-    return db_settings
-
-DATABASES['default'] = _maybe_use_supabase_direct(DATABASES.get('default'))
-
 # Ensure it respects Supabase/Render's SSL requirements if any
 if 'DATABASE_URL' in os.environ:
     DATABASES['default']['OPTIONS'] = {'sslmode': 'require'}
-# Keep DB connections short-lived by default to ease Supabase pool usage
-DATABASES['default']['CONN_MAX_AGE'] = int(os.environ.get('CONN_MAX_AGE', 0))
+# Keep DB connections open for a short period to reduce overhead in production
+DATABASES['default']['CONN_MAX_AGE'] = int(os.environ.get('CONN_MAX_AGE', 600))
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
