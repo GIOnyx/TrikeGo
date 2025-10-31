@@ -241,11 +241,12 @@ class TricycleForm(forms.ModelForm):
     class Meta:
         from .models import Tricycle
         model = Tricycle
-        fields = ['plate_number', 'color', 'image_url']
+        fields = ['plate_number', 'color', 'image_url', 'max_capacity']
         widgets = {
             'plate_number': forms.TextInput(attrs={'placeholder': 'Plate number', 'required': True}),
             'color': forms.TextInput(attrs={'placeholder': 'Tricycle color', 'required': True}),
             'image_url': forms.URLInput(attrs={'placeholder': 'Image URL', 'required': True}),
+            'max_capacity': forms.NumberInput(attrs={'placeholder': 'Max passengers', 'required': True, 'min': 1}),
         }
 
     def clean_plate_number(self):
@@ -265,3 +266,16 @@ class TricycleForm(forms.ModelForm):
         except ValidationError:
             raise ValidationError('Image URL must be a valid HTTP/HTTPS URL')
         return url
+
+    def clean_max_capacity(self):
+        cap = self.cleaned_data.get('max_capacity')
+        try:
+            cap = int(cap)
+        except Exception:
+            raise ValidationError('Max capacity must be an integer')
+        if cap < 1:
+            raise ValidationError('Max capacity must be at least 1')
+        if cap > 20:
+            # Reasonable upper bound to prevent accidental huge values
+            raise ValidationError('Max capacity seems too large')
+        return cap

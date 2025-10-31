@@ -235,6 +235,37 @@ body.booking-active #booking-preview-card { display: none !important; }
   margin-top: 1rem;
 }
 
+/* Booking form input styles */
+.booking-form label { display:block; margin-bottom:6px; color:#cfe7ff; font-weight:600; }
+.booking-form input[type="text"], .booking-form input[type="number"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color: #e6eefc;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.booking-form .field-row { margin-bottom: 12px; }
+.booking-form input[type="number"] { max-width: 120px; }
+
+/* Make booking preview more compact and stack pickup/destination */
+#booking-preview-card {
+  left: 50% !important;
+  transform: translateX(-50%);
+  min-width: 320px;
+  max-width: 680px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  bottom: 24px;
+}
+#booking-preview-card .driver-card-inner { gap:12px; }
+#booking-preview-card .driver-meta { display: block; color: #eef6ff; }
+#booking-preview-card .driver-meta div { margin-bottom: 6px; font-size: 13px; }
+#booking-preview-card .driver-name { font-size: 15px; }
+#booking-preview-card .driver-fare { font-weight:600; color:#cfe7ff; }
+
 .dashboard-tracking-card {
             background: white;
             padding: 1.5rem;

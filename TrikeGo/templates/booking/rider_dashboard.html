@@ -52,6 +52,8 @@
                 <div class="nav-top">
                     <div class="brand">TrikeGo</div>
                 </div>
+
+                {# sidebar passenger input removed; passengers belong inside the booking form card #}
                 <div class="nav-icons">
                     <a class="nav-icon" title="Profile" href="#">
                         <img src="{% static 'user/images/account_icon.png' %}" alt="Profile">
@@ -96,6 +98,11 @@
                     <div id="destination-results" class="autocomplete-results"></div>
                     {{ booking_form.destination_latitude }}
                     {{ booking_form.destination_longitude }}
+                </div>
+
+                <div class="field-row" style="margin-top:8px;">
+                    <label for="id_passengers">Passengers</label>
+                    {{ booking_form.passengers }}
                 </div>
 
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Find a Trike</button>

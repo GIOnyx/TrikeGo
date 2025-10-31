@@ -20,6 +20,13 @@ body {
   width: 100%;
 }
 
+.brand{
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 22px; /* larger TRIKEGO text for the side panel */
+  letter-spacing: 0.4px;
+}
+
 /* Vertical sidebar (compact rail by default) */
 .sidebar {
   position: fixed;
@@ -27,6 +34,57 @@ body {
   left: 0;
   bottom: 0;
   width: 72px; /* compact rail */
+/* Itinerary card (multi-stop view) */
+.driver-info-card { transition: max-height 180ms ease, transform 180ms ease; }
+.driver-info-card.collapsed #itinerary-full { display: none; }
+.driver-info-card.expanded { max-height: 80vh; overflow-y: auto; }
+.driver-info-card.expanded #itinerary-full { display: block; }
+
+.itinerary-summary { display: flex; flex-direction: column; gap: 10px; }
+.itinerary-summary-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: #0b2638; }
+.itinerary-summary-header > span { flex: 1 1 auto; min-width: 180px; }
+.itinerary-summary-header button { flex-shrink: 0; }
+.itinerary-summary-header button,
+.itinerary-full-header button { border: none; background: #0b63d6; color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+.itinerary-summary-header button:hover,
+.itinerary-full-header button:hover { background: #094fbb; }
+
+.itinerary-summary h3 { margin: 0; font-size: 16px; color: #0b2638; }
+.itinerary-summary p { margin: 0; color: #34495e; font-size: 14px; }
+
+.itinerary-full { margin-top: 14px; display: none; }
+.itinerary-full-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; color: #0b2638; }
+.itinerary-full-header h3 { margin: 0; font-size: 16px; }
+
+.itinerary-stats { display: flex; justify-content: space-between; background: #eef3fc; padding: 8px 10px; border-radius: 8px; color: #0b2638; margin-bottom: 12px; font-size: 13px; }
+
+.stop-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.stop-item { background: #ffffff; border-radius: 10px; padding: 10px 12px; box-shadow: 0 4px 12px rgba(11, 38, 56, 0.08); border: 1px solid rgba(11, 38, 56, 0.06); position: relative; }
+.stop-item .stop-header { display: flex; justify-content: space-between; align-items: center; font-weight: 600; color: #0b2638; margin-bottom: 6px; }
+.stop-item .stop-meta { font-size: 12px; color: #54677a; margin-bottom: 4px; }
+.stop-item .stop-note { font-size: 12px; color: #7a8897; margin-top: 4px; }
+
+.stop-item.completed { opacity: 0.6; }
+.stop-item.current { border-color: #0b63d6; box-shadow: 0 0 0 3px rgba(11, 99, 214, 0.15); }
+.stop-item.pending { border-color: rgba(11, 38, 56, 0.06); }
+
+.stop-badge { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; font-size: 12px; font-weight: 700; margin-right: 8px; background: #0b63d6; color: #fff; }
+.stop-badge.dropoff { background: #28a745; }
+.stop-status-pill { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.stop-status-pill.current { background: rgba(11, 99, 214, 0.15); color: #0b63d6; }
+.stop-status-pill.completed { background: rgba(40, 167, 69, 0.18); color: #1c7c37; }
+.stop-status-pill.upcoming { background: rgba(11, 38, 56, 0.12); color: #0b2638; }
+
+.stop-sequence-marker { background: transparent !important; border: none !important; }
+.stop-sequence-marker .marker-label { background: #0b63d6; color: #fff; font-weight: 700; border-radius: 10px; padding: 4px 8px; box-shadow: 0 3px 10px rgba(11, 38, 56, 0.25); font-size: 12px; }
+.marker-dropoff .marker-label, .stop-sequence-marker.marker-dropoff .marker-label { background: #28a745; }
+
+.pulse-highlight { animation: itineraryPulse 1.8s ease-in-out 1; }
+@keyframes itineraryPulse {
+  0% { box-shadow: 0 0 0 0 rgba(11, 99, 214, 0.35); }
+  60% { box-shadow: 0 0 0 18px rgba(11, 99, 214, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(11, 99, 214, 0); }
+}
   background-color: #0f1724;
   display: flex;
   flex-direction: column;
@@ -39,6 +97,38 @@ body {
 /* layout for central icons area inside rail */
 .nav-center { flex: 1; display:flex; flex-direction:column; align-items:center; gap:12px; padding-top:8px; }
 .nav-center .nav-icon { display:block; margin:8px 0; }
+
+/* Slightly smaller icons in the compact rail for a cleaner look */
+.nav-center .nav-icon,
+.nav-center .nav-icon img,
+.nav-center .nav-icon svg {
+  width: 24px;
+  height: 24px;
+  max-width: 24px;
+  max-height: 24px;
+}
+
+/* Increase brand size when rendered inside the sidebar specifically */
+.sidebar .brand {
+  font-size: 28px;
+  line-height: 1;
+  display: block;
+  margin-bottom: 6px;
+}
+
+/* Ensure any logout / bottom icons in the sidebar match the compact icon size */
+.sidebar .logout-btn img,
+.sidebar .logout-btn svg,
+.sidebar .nav-icon.logout img,
+.sidebar .nav-icon.logout svg {
+  width: 24px;
+  height: 24px;
+  max-width: 24px;
+  max-height: 24px;
+}
+
+/* Slightly reduce spacing between icons in the compact rail to balance the smaller size */
+.nav-center { gap: 10px; }
 
 .main-content {
   margin-left: 300px; /* legacy */
@@ -116,15 +206,19 @@ body {
 
 .logout-btn {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  bottom: 12px; /* anchor logout to bottom of sidebar rail */
+  left: 6px;
   background-color: #dc3545;
   color: white;
-  padding: 0.5rem 1rem;
+  padding: 6px 8px;
   text-decoration: none;
-  border-radius: 4px;
+  border-radius: 6px;
   z-index: 1002; /* make sure logout stays above map legend */
 }
+
+/* Ensure the logout form in the sidebar is anchored at the bottom of the rail */
+.sidebar .logout-form { position: absolute; bottom: 12px; left: 6px; right: 6px; z-index: 1005; }
+.sidebar .logout-form .nav-icon.logout-icon { display:block; width:100%; padding:8px; border-radius:8px; background:#dc3545; text-align:center; }
 
 /* route details block moved; map container is controlled by the bottom-of-file rules to avoid conflicts */
 /* #route-details styles remain available below or in template-specific CSS if needed */
@@ -151,8 +245,33 @@ body {
 
 /* Centralized marker inner element styles (used by L.divIcon's marker-inner) */
 .driver-marker .marker-inner { background: #28a745; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; }
-.pickup-marker .marker-inner { background: #ffc107; width: 25px; height: 25px; border-radius: 50%; border: 2px solid white; }
-.dest-marker .marker-inner { background: #007bff; width: 25px; height: 25px; border-radius: 50%; border: 2px solid white; }
+.stop-marker .marker-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+.stop-marker .marker-number {
+  display: block;
+}
+.pickup-marker .marker-inner {
+  background: #ffc107;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+}
+.dest-marker .marker-inner {
+  background: #0b63d6;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+}
 .rider-marker .marker-inner { background: #ffc107; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; }
 
 /* Map legend */
@@ -171,7 +290,7 @@ body {
 .map-legend .legend-dot { width: 12px; height: 12px; border-radius: 50%; display:inline-block; border: 1px solid rgba(0,0,0,0.06); }
 .map-legend .legend-dot.driver { background: #28a745; }
 .map-legend .legend-dot.pickup { background: #ffc107; }
-.map-legend .legend-dot.dest { background: #007bff; }
+.map-legend .legend-dot.dest { background: #0b63d6; }
 
 /* Driver loader / spinner (initial load + per-review first view) */
 .route-loader { display:flex; align-items:center; justify-content:center; gap:10px; }
@@ -185,6 +304,7 @@ body {
 #driverChatMessages { display:flex; flex-direction:column; gap:8px; }
 .chat-msg-own { align-self: flex-end; background: #dcf8c6; padding:8px 12px; border-radius:12px; max-width:85%; box-shadow:0 1px 0 rgba(0,0,0,0.05); text-align:right; }
 .chat-msg-other { align-self: flex-start; background: #ffffff; padding:8px 12px; border-radius:12px; max-width:85%; border:1px solid #eee; text-align:left; }
+.chat-msg-booking { font-size: 11px; color: #5374a6; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
 .chat-msg-meta { font-size: 11px; color: #666; margin-bottom:4px; }
 .chat-date-sep { text-align:center; color:#777; font-size:12px; margin:8px 0; }
 .newest-message { box-shadow: 0 0 0 4px rgba(52,152,219,0.12); transition: box-shadow 400ms ease-out; }
@@ -239,7 +359,6 @@ body.sidebar-expanded .sidebar-content { display: block; }
 
 /* nav-body: fills remaining vertical area of sidebar so content can stack */
 .nav-body { flex: 1; display:flex; flex-direction:column; }
-.nav-top { }
 .nav-bar { display:flex; flex-direction:column; height:100%; }
 
 /* new: make rider name more prominent for contrast */
@@ -270,8 +389,33 @@ body.show-rides .logout-form { display: none !important; }
   z-index: 2200;
   width: 320px;
   margin-left: 20px;
+  padding: 16px 18px;
+  background: rgba(15, 23, 36, 0.96);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 36px rgba(11, 38, 56, 0.28);
+  color: #f4f7ff;
+  box-sizing: border-box;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
 }
 body.sidebar-expanded .driver-info-card { left: calc(320px + 16px); }
+
+.driver-info-card .itinerary-summary,
+.driver-info-card .itinerary-full { color: #f4f7ff; }
+.driver-info-card .itinerary-summary h3,
+.driver-info-card .itinerary-full-header,
+.driver-info-card .itinerary-full-header h3 { color: #f4f7ff; }
+.driver-info-card .itinerary-summary-header { color: #f4f7ff; }
+.driver-info-card .itinerary-summary p { color: #d1dcff; }
+.driver-info-card .itinerary-stats { background: rgba(255,255,255,0.08); color: #f4f7ff; }
+.driver-info-card .stop-item { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.18); color: #f4f7ff; }
+.driver-info-card .stop-item .stop-header { color: #f4f7ff; }
+.driver-info-card .stop-item .stop-meta { color: #d1dcff; }
+.driver-info-card .stop-item .stop-note { color: #f3f6ff; }
+.driver-info-card .stop-status-pill.upcoming { background: rgba(255,255,255,0.18); color: #f4f7ff; }
+.driver-info-card .stop-status-pill.current { background: rgba(11,99,214,0.28); color: #f4f7ff; }
+.driver-info-card .stop-status-pill.completed { background: rgba(40,167,69,0.25); color: #cff5da; }
 
 .driver-card-inner { background: #f9fafc; color: #0b2638; border-radius:8px; padding:12px; box-shadow:0 8px 24px rgba(0,0,0,0.12); }
 .driver-card-inner .driver-name { font-weight: 700; font-size: 15px; color: #0b2638; }
