@@ -434,6 +434,38 @@ class RiderDashboard(View):
             print('BookingForm cleaned_data:', form.cleaned_data)
             booking = form.save(commit=False)
             booking.rider = request.user
+
+            pickup_lon = form.cleaned_data['pickup_longitude']
+            pickup_lat = form.cleaned_data['pickup_latitude']
+            dest_lon = form.cleaned_data['destination_longitude']
+            dest_lat = form.cleaned_data['destination_latitude']
+            
+            # 1. Prepare coordinates (RoutingService expects lon, lat)
+            start_coords = (float(pickup_lon), float(pickup_lat))
+            end_coords = (float(dest_lon), float(dest_lat))
+
+            try:
+                # 2. Get route estimates
+                routing_service = RoutingService()
+                # We use 'driving-car', which is the default in your RoutingService
+                route_info = routing_service.calculate_route(start_coords, end_coords) 
+                
+                if route_info and not route_info.get('too_close'):
+                    # 3. Store estimated values (distance in km, duration in minutes)
+                    booking.estimated_distance = Decimal(str(route_info['distance']))
+                    booking.estimated_duration = route_info['duration'] // 60 # Convert seconds to minutes
+                    
+                    # 4. Calculate and set the fare
+                    booking.calculate_fare() 
+                    
+                else:
+                    messages.warning(request, "Could not determine route estimates for fare calculation or points are too close.")
+
+            except Exception as e:
+                # Log the error but proceed with booking (without fare) if possible
+                print(f"Routing/Fare calculation failed: {e}")
+                messages.warning(request, "An issue occurred with fare estimation. Booking pending approval.")
+
             booking.save()
             print(f'Booking saved with id={booking.id} for rider={request.user.username}')
             messages.success(request, 'Your booking has been created successfully!')

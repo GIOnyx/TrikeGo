@@ -3,6 +3,7 @@ import uuid
 from django.db import models
 from user.models import CustomUser 
 from django.utils import timezone
+from decimal import Decimal
 
 class Booking(models.Model):
     rider = models.ForeignKey(
@@ -50,6 +51,41 @@ class Booking(models.Model):
     estimated_distance = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # in km
     estimated_duration = models.IntegerField(null=True, blank=True)  # in minutes
     estimated_arrival = models.DateTimeField(null=True, blank=True)
+
+    def calculate_fare(self):
+        """
+        Calculates the estimated fare based on distance and duration.
+        estimated_distance should be in km (Decimal) and estimated_duration in minutes (int).
+        """
+        if self.estimated_distance is None or self.estimated_duration is None:
+            # Cannot calculate without estimates
+            self.fare = None
+            return None 
+
+        # --- FARE STRUCTURE (ADJUST THESE VALUES) ---
+        BASE_FARE = Decimal('20.00') # Initial flat rate (PHP)
+        PER_KM_RATE = Decimal('5.00') # Rate per kilometer (PHP/km)
+        PER_MINUTE_RATE = Decimal('0.75') # Rate per minute (PHP/min)
+        MINIMUM_FARE = Decimal('20.00') # Minimum total fare
+
+        # 1. Distance Component
+        # Ensure estimated_distance is treated as Decimal for multiplication
+        distance_cost = self.estimated_distance * PER_KM_RATE
+
+        # 2. Time Component
+        # Convert duration (int minutes) to Decimal
+        duration_decimal = Decimal(self.estimated_duration)
+        time_cost = duration_decimal * PER_MINUTE_RATE
+
+        # 3. Total Fare
+        calculated_fare = BASE_FARE + distance_cost + time_cost
+        
+        # 4. Apply Minimum Fare and Round
+        final_fare = max(calculated_fare, MINIMUM_FARE)
+        
+        # Set the fare field on the instance, rounded to 2 decimal places
+        self.fare = final_fare.quantize(Decimal('0.01'))
+        return self.fare
 
     def __str__(self):
         return f"Booking {self.id} - {self.rider.username} to {self.destination_address}"

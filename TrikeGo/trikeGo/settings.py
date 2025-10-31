@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # Set to 'False' by default, Render will set this env var to 'False'
-DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 # In Render, set an env var 'ALLOWED_HOSTS' to your .onrender.com URL
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
