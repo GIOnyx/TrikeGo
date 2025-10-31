@@ -3,6 +3,18 @@ from .models import Booking
 import math
 
 class BookingForm(forms.ModelForm):
+    passengers = forms.IntegerField(
+        min_value=1,
+        max_value=20,
+        initial=1,
+        widget=forms.NumberInput(attrs={
+            'min': 1,
+            'max': 20,
+            'value': 1,
+            'placeholder': 'Number of passengers',
+            'id': 'id_passengers'
+        })
+    )
     class Meta:
         model = Booking
         fields = [
@@ -12,6 +24,7 @@ class BookingForm(forms.ModelForm):
             'destination_address',
             'destination_latitude',
             'destination_longitude',
+            'passengers',
         ]
         widgets = {
             'pickup_address': forms.TextInput(attrs={
@@ -30,6 +43,12 @@ class BookingForm(forms.ModelForm):
             'pickup_longitude': forms.HiddenInput(),
             'destination_latitude': forms.HiddenInput(),
             'destination_longitude': forms.HiddenInput(),
+            'passengers': forms.NumberInput(attrs={
+                'min': 1,
+                'max': 20,
+                'value': 1,
+                'placeholder': 'Number of passengers',
+            }),
         }
     
     def clean(self):
@@ -74,3 +93,15 @@ class BookingForm(forms.ModelForm):
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
         
         return R * c
+
+    def clean_passengers(self):
+        val = self.cleaned_data.get('passengers')
+        try:
+            v = int(val)
+        except Exception:
+            raise forms.ValidationError('Passengers must be an integer')
+        if v < 1:
+            raise forms.ValidationError('There must be at least 1 passenger')
+        if v > 20:
+            raise forms.ValidationError('Passengers exceeds allowed maximum')
+        return v

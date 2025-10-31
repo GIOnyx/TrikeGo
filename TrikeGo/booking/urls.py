@@ -13,4 +13,6 @@ urlpatterns = [
     path('api/location/<int:booking_id>/', api_views.get_driver_location, name='get_driver_location'),
     path('api/route/<int:booking_id>/', api_views.get_current_route, name='get_current_route'),
     path('api/reroute/<int:booking_id>/', api_views.manual_reroute, name='manual_reroute'),
+    path('api/driver/itinerary/', api_views.driver_itinerary, name='driver_itinerary'),
+    path('api/itinerary/complete_stop/', api_views.complete_itinerary_stop, name='complete_itinerary_stop'),
 ]

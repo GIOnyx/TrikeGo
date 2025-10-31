@@ -12,7 +12,20 @@
     const cfg = window.DRIVER_DASH_CONFIG || {};
     const ORS_API_KEY = cfg.ORS_API_KEY || '';
     const userId = cfg.userId || null;
-    const activeBookingIdFromTemplate = (cfg.activeBookingId === null) ? null : cfg.activeBookingId;
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
 
     // Helper: escape HTML
     function escapeHtml(str) {
@@ -21,136 +34,735 @@
         });
     }
 
-    // Start active booking display (routes + ETA)
-    const _activeBookingDisplays = new Set();
-    function startActiveBookingDisplay(bookingId, mapInstance) {
-        if (_activeBookingDisplays.has(bookingId)) return;
-        try { if (window.showDriverChatButton) window.showDriverChatButton(); } catch(e){}
-        _activeBookingDisplays.add(bookingId);
-        const etaLabel = document.getElementById('eta-label');
-        const etaValue = document.getElementById('eta-value');
-        const etaSection = document.getElementById('active-trip-eta'); if (etaSection) etaSection.style.display = 'block';
+    // ---- Multi-stop itinerary state management ----
+    let itineraryData = null;
+    let currentStopIndex = 0;
+    let itineraryExpanded = false;
+    let itineraryTimer = null;
+    let itineraryMarkers = [];
+    let itineraryRouteLayer = null;
+    let itineraryRouteSignature = null;
+    let itineraryRouteIsFallback = false;
+    let itineraryRouteRequestId = 0;
+    let itineraryRoutePaneCache = {};
+    let itineraryDom = {};
+    let mapInstance = null;
+    let routeLoaderDepth = 0;
+    let itineraryHasLoaded = false;
 
-    let activeDriverToRiderRouteLayer = null; let activeRiderToDestRouteLayer = null;
-    let activeDriverMarker = null; let activePickupMarker = null; let activeDestMarker = null;
-    let initialDriverRouteLoadDone = false;
-    // local per-display ORS cache & rate-limit guard
-    let _orsRateLimitedUntil = 0;
-    let _prevDriverToPickupCoords = null;
-    let _prevPickupToDestCoords = null;
-    let _lastDTData = null;
-    let _lastRDData = null;
-
-        async function refreshEtaAndRoute() {
-            try {
-                const loader = document.getElementById('driver-route-loader');
-                if (!initialDriverRouteLoadDone && loader) { loader.classList.remove('hidden'); loader.setAttribute('aria-hidden','false'); }
-                const infoResponse = await fetch(`/api/booking/${bookingId}/route_info/`);
-                const info = await infoResponse.json();
-                if (!initialDriverRouteLoadDone && loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden','true'); }
-                if (info.status !== 'success') return;
-
-                const dLat = Number(info.driver_lat), dLon = Number(info.driver_lon);
-                const pLat = Number(info.pickup_lat), pLon = Number(info.pickup_lon);
-                const xLat = Number(info.destination_lat), xLon = Number(info.destination_lon);
-
-                // Only call ORS if coords changed and not currently rate-limited
-                const now = Date.now();
-                const rateLimited = (_orsRateLimitedUntil && now < _orsRateLimitedUntil);
-                if (!rateLimited) {
-                    if (Number.isFinite(dLat) && Number.isFinite(dLon) && Number.isFinite(pLat) && Number.isFinite(pLon)) {
-                        const dpKey = `${dLat},${dLon}|${pLat},${pLon}`;
-                        let dt = null;
-                        if (dpKey !== _prevDriverToPickupCoords) {
-                            const dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${dLon},${dLat}&end=${pLon},${pLat}`;
-                            try {
-                                const dtRes = await fetch(dtUrl);
-                                if (dtRes.status === 429) { _orsRateLimitedUntil = now + 30000; console.warn('ORS rate limit detected (429)'); }
-                                else { dt = await dtRes.json(); _lastDTData = dt; _prevDriverToPickupCoords = dpKey; }
-                            } catch(e) { console.warn('Driver->pickup route fetch failed', e); }
-                        } else { dt = _lastDTData; }
-
-                        if (dt && dt.features?.[0]?.properties?.segments?.[0]) {
-                            if (activeDriverToRiderRouteLayer) mapInstance.removeLayer(activeDriverToRiderRouteLayer);
-                            activeDriverToRiderRouteLayer = L.geoJSON(dt.features[0], { style: { color: '#28a745', weight: 5, opacity: 0.8 } }).addTo(mapInstance);
-                            try {
-                                const driverLatLng = [dLat, dLon]; const driverIcon = L.divIcon({ className: 'driver-marker', html: '<div class="marker-inner"></div>', iconSize: [30, 30] });
-                                if (activeDriverMarker) activeDriverMarker.setLatLng(driverLatLng); else activeDriverMarker = L.marker(driverLatLng, { icon: driverIcon }).addTo(mapInstance).bindPopup('Driver');
-                            } catch (err) { console.warn('Marker update failed', err); }
-                            if (dt.features[0].properties?.segments?.[0]) {
-                                const seg = dt.features[0].properties.segments[0]; if (etaValue) etaValue.textContent = `${Math.ceil(seg.duration / 60)} min`;
-                            }
-                        }
-                    }
-
-                    // Workaround: occasionally Leaflet tiles are clipped on load. Ensure map invalidates size after load
-                    window.addEventListener('load', function () {
-                        setTimeout(function () {
-                            try {
-                                if (window.DRIVER_MAP && typeof window.DRIVER_MAP.invalidateSize === 'function') {
-                                    window.DRIVER_MAP.invalidateSize();
-                                }
-                                // If route layer exists, try to fit bounds so markers are visible
-                                if (window.DRIVER_ROUTE_LAYER && typeof window.DRIVER_ROUTE_LAYER.getBounds === 'function' && window.DRIVER_MAP) {
-                                    try {
-                                        window.DRIVER_MAP.fitBounds(window.DRIVER_ROUTE_LAYER.getBounds(), { padding: [80, 80] });
-                                    }
-                                    catch (e) {
-                                        // ignore
-                                    }
-                                }
-                            }
-                            catch (err) {
-                                // ignore any errors during initial resize
-                                console.warn('Driver dashboard: map invalidateSize error', err);
-                            }
-                        }, 300);
-                    });
-
-                    if (Number.isFinite(pLat) && Number.isFinite(pLon) && Number.isFinite(xLat) && Number.isFinite(xLon)) {
-                        const pdKey = `${pLat},${pLon}|${xLat},${xLon}`;
-                        let rd = null;
-                        if (pdKey !== _prevPickupToDestCoords) {
-                            const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${pLon},${pLat}&end=${xLon},${xLat}`;
-                            try {
-                                const rdRes = await fetch(rdUrl);
-                                if (rdRes.status === 429) { _orsRateLimitedUntil = now + 30000; console.warn('ORS rate limit detected (429)'); }
-                                else { rd = await rdRes.json(); _lastRDData = rd; _prevPickupToDestCoords = pdKey; }
-                            } catch(e) { console.warn('Pickup->dest route fetch failed', e); }
-                        } else { rd = _lastRDData; }
-
-                        if (rd && rd.features?.[0]) {
-                            if (activeRiderToDestRouteLayer) mapInstance.removeLayer(activeRiderToDestRouteLayer);
-                            activeRiderToDestRouteLayer = L.geoJSON(rd.features[0], { style: { color: '#007bff', weight: 5, opacity: 0.8 } }).addTo(mapInstance);
-                            try {
-                                const pickupLatLng = [pLat, pLon]; const destLatLng = [xLat, xLon]; const pickupIcon = L.divIcon({ className: 'pickup-marker', html: '<div class="marker-inner"></div>', iconSize: [25,25] }); const destIcon = L.divIcon({ className: 'dest-marker', html: '<div class="marker-inner"></div>', iconSize: [25,25] });
-                                if (activePickupMarker) activePickupMarker.setLatLng(pickupLatLng); else activePickupMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(mapInstance).bindPopup('Pickup Location');
-                                if (activeDestMarker) activeDestMarker.setLatLng(destLatLng); else activeDestMarker = L.marker(destLatLng, { icon: destIcon }).addTo(mapInstance).bindPopup('Destination');
-                            } catch (err) { console.warn('Pickup/dest marker update failed', err); }
-                            // Update booking distance UI if present
-                            try {
-                                const seg = rd.features[0].properties?.segments?.[0];
-                                if (seg) {
-                                    const distEl = document.getElementById('booking-distance');
-                                    if (distEl) distEl.textContent = (seg.distance/1000).toFixed(2) + ' km';
-                                }
-                            } catch(e) { /* ignore */ }
-                        }
-                    }
-                } else {
-                    console.warn('Skipping ORS routing due to rate limit until', new Date(_orsRateLimitedUntil));
-                }
-
-                const layers = [];
-                if (activeDriverToRiderRouteLayer) layers.push(activeDriverToRiderRouteLayer);
-                if (activeRiderToDestRouteLayer) layers.push(activeRiderToDestRouteLayer);
-                if (layers.length > 0) { let bounds = layers[0].getBounds(); layers.forEach(l => bounds.extend(l.getBounds())); mapInstance.fitBounds(bounds, { padding: [50,50] }); }
-            } catch (e) { console.error('ETA refresh error', e); } finally { initialDriverRouteLoadDone = true; try { const loader = document.getElementById('driver-route-loader'); if (loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden','true'); } } catch(e){} }
+    function updateRouteLoaderVisibility() {
+        const loaderEl = document.getElementById('driver-route-loader');
+        if (!loaderEl) {
+            return;
         }
-    refreshEtaAndRoute();
-    // Poll less aggressively to reduce ORS calls and avoid rate limits
-    // Increase interval; server-side caches route_info to reduce external ORS calls
-    setInterval(refreshEtaAndRoute, 12000);
+        if (routeLoaderDepth > 0) {
+            loaderEl.classList.remove('hidden');
+            loaderEl.setAttribute('aria-hidden', 'false');
+        } else {
+            loaderEl.classList.add('hidden');
+            loaderEl.setAttribute('aria-hidden', 'true');
+        }
+    }
+
+    function showRouteLoader() {
+        routeLoaderDepth += 1;
+        updateRouteLoaderVisibility();
+    }
+
+    function hideRouteLoader() {
+        if (routeLoaderDepth > 0) {
+            routeLoaderDepth -= 1;
+            updateRouteLoaderVisibility();
+        }
+    }
+
+    function getTripBookingIds() {
+        if (!itineraryData || !Array.isArray(itineraryData.stops)) return [];
+        const idSet = new Set();
+        itineraryData.stops.forEach(stop => {
+            if (stop && stop.bookingId) {
+                idSet.add(stop.bookingId);
+            }
+        });
+        return Array.from(idSet);
+    }
+
+    function getPreferredChatBookingId() {
+        const bookingIds = getTripBookingIds();
+        if (!bookingIds.length) {
+            return null;
+        }
+        if (itineraryData && Array.isArray(itineraryData.stops) && itineraryData.stops[currentStopIndex]) {
+            return itineraryData.stops[currentStopIndex].bookingId || bookingIds[0];
+        }
+        return bookingIds[0];
+    }
+
+    function updateTrackingState() {
+        const hasStops = itineraryData && Array.isArray(itineraryData.stops) && itineraryData.stops.length > 0;
+        if (hasStops) {
+            document.body.setAttribute('data-has-itinerary', 'true');
+            if (typeof window.startLocationTracking === 'function') {
+                window.startLocationTracking(false);
+            }
+        } else {
+            document.body.removeAttribute('data-has-itinerary');
+            if (typeof window.stopLocationTracking === 'function') {
+                window.stopLocationTracking();
+            }
+        }
+    }
+
+    function initItinerary(map) {
+        mapInstance = map;
+        itineraryRoutePaneCache = {};
+        itineraryDom = {
+            card: document.getElementById('itinerary-card'),
+            summaryStatusText: document.getElementById('summary-status-text'),
+            summaryActionType: document.getElementById('summary-action-type'),
+            summaryAddress: document.getElementById('summary-address'),
+            summaryActionBtn: document.getElementById('summary-action-btn'),
+            summaryStopNum: document.getElementById('summary-stop-num'),
+            summaryStopTotal: document.getElementById('summary-stop-total'),
+            expandBtn: document.getElementById('itinerary-expand-btn'),
+            collapseBtn: document.getElementById('itinerary-collapse-btn'),
+            fullBookingCount: document.getElementById('full-booking-count'),
+            fullCapacity: document.getElementById('full-capacity'),
+            fullEarnings: document.getElementById('full-earnings'),
+            stopList: document.getElementById('itinerary-stop-list'),
+            summaryContainer: document.getElementById('itinerary-summary'),
+            fullContainer: document.getElementById('itinerary-full'),
+            chatBtn: document.getElementById('open-chat-btn'),
+        };
+
+        if (!itineraryDom.card) {
+            return;
+        }
+
+        itineraryExpanded = false;
+        itineraryDom.card.classList.add('collapsed');
+
+        if (itineraryDom.expandBtn) {
+            itineraryDom.expandBtn.addEventListener('click', () => toggleItinerary(true));
+        }
+        if (itineraryDom.collapseBtn) {
+            itineraryDom.collapseBtn.addEventListener('click', () => toggleItinerary(false));
+        }
+        if (itineraryDom.summaryActionBtn) {
+            itineraryDom.summaryActionBtn.addEventListener('click', handleSummaryActionClick);
+        }
+        if (itineraryDom.chatBtn) {
+            itineraryDom.chatBtn.addEventListener('click', openTripChatFromUI);
+        }
+
+        fetchItineraryData();
+        itineraryTimer = setInterval(fetchItineraryData, 12000);
+    }
+
+    function toggleItinerary(expand) {
+        if (!itineraryDom.card) return;
+        itineraryExpanded = !!expand;
+        itineraryDom.card.classList.toggle('expanded', itineraryExpanded);
+        itineraryDom.card.classList.toggle('collapsed', !itineraryExpanded);
+        if (itineraryDom.fullContainer) {
+            itineraryDom.fullContainer.style.display = itineraryExpanded ? 'block' : 'none';
+        }
+    }
+
+    function clearItineraryMarkers() {
+        if (!mapInstance) return;
+        itineraryMarkers.forEach(marker => {
+            try { mapInstance.removeLayer(marker); } catch (err) { /* ignore */ }
+        });
+        itineraryMarkers = [];
+    }
+
+    function resetItineraryRoute() {
+        if (!mapInstance) {
+            itineraryRouteLayer = null;
+            itineraryRouteSignature = null;
+            return;
+        }
+        if (itineraryRouteLayer && mapInstance.hasLayer(itineraryRouteLayer)) {
+            try { mapInstance.removeLayer(itineraryRouteLayer); } catch (err) { /* ignore */ }
+        }
+        itineraryRouteLayer = null;
+        itineraryRouteSignature = null;
+        itineraryRouteIsFallback = false;
+    }
+
+    function clearItineraryMapLayers() {
+        clearItineraryMarkers();
+        resetItineraryRoute();
+    }
+
+    function getStopActionLabel(stop) {
+        if (!stop) return 'Proceed';
+        if (stop.type === 'PICKUP') {
+            return stop.status === 'CURRENT' ? 'Start Pickup' : 'Queue Pickup';
+        }
+        return stop.status === 'CURRENT' ? 'Confirm Drop-off' : 'Queue Drop-off';
+    }
+
+    function buildStopStatusClass(status) {
+        if (status === 'COMPLETED') return 'completed';
+        if (status === 'CURRENT') return 'current';
+        return 'pending';
+    }
+
+    function formatStatusLabel(status) {
+        switch ((status || 'UPCOMING').toUpperCase()) {
+            case 'COMPLETED':
+                return 'Completed';
+            case 'CURRENT':
+                return 'Current';
+            default:
+                return 'Upcoming';
+        }
+    }
+
+    function renderStopList(stops) {
+        if (!itineraryDom.stopList) return;
+        itineraryDom.stopList.innerHTML = '';
+
+        const fragment = document.createDocumentFragment();
+        stops.forEach((stop, index) => {
+            const li = document.createElement('li');
+            li.className = `stop-item ${buildStopStatusClass(stop.status)}`;
+
+            const typeLabel = stop.type === 'PICKUP' ? 'Pick Up' : 'Drop Off';
+            const badgeClass = stop.type === 'PICKUP' ? '' : 'dropoff';
+            const statusClass = stop.status ? stop.status.toLowerCase() : 'upcoming';
+            const statusLabel = formatStatusLabel(stop.status);
+            const passengerLabel = stop.passengerCount === 1 ? '1 passenger' : `${stop.passengerCount} passengers`;
+
+            li.innerHTML = `
+                <div class="stop-header">
+                    <div>
+                        <span class="stop-badge ${badgeClass}">${index + 1}</span>
+                        ${escapeHtml(typeLabel)} &ndash; ${escapeHtml(stop.passengerName || 'Passenger')}
+                    </div>
+                    <span class="stop-status-pill ${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span>
+                </div>
+                <div class="stop-meta">${escapeHtml(stop.address || '--')}</div>
+                <div class="stop-meta">${escapeHtml(passengerLabel)}</div>
+                ${stop.note ? `<div class="stop-note">${escapeHtml(stop.note)}</div>` : ''}
+            `;
+
+            fragment.appendChild(li);
+        });
+
+        itineraryDom.stopList.appendChild(fragment);
+    }
+
+    function buildItineraryRoutePoints(itinerary) {
+        const points = [];
+        const pushPoint = (lat, lon) => {
+            const latNum = Number(lat);
+            const lonNum = Number(lon);
+            if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return;
+            if (points.length > 0) {
+                const [prevLat, prevLon] = points[points.length - 1];
+                if (Math.abs(prevLat - latNum) < 1e-5 && Math.abs(prevLon - lonNum) < 1e-5) {
+                    return;
+                }
+            }
+            points.push([latNum, lonNum]);
+        };
+
+        if (Array.isArray(itinerary?.fullRoutePolyline) && itinerary.fullRoutePolyline.length >= 2) {
+            itinerary.fullRoutePolyline.forEach(pt => {
+                if (Array.isArray(pt) && pt.length >= 2) {
+                    pushPoint(pt[0], pt[1]);
+                }
+            });
+        }
+
+        if (points.length < 2 && Array.isArray(itinerary?.stops)) {
+            itinerary.stops.forEach(stop => {
+                if (!Array.isArray(stop.coordinates) || stop.coordinates.length !== 2) return;
+                pushPoint(stop.coordinates[0], stop.coordinates[1]);
+            });
+        }
+
+        return points;
+    }
+
+    async function requestORSRouteFeature(points) {
+        const coordPairs = points.map(([lat, lon]) => {
+            const latNum = Number(lat);
+            const lonNum = Number(lon);
+            if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return null;
+            return [lonNum, latNum];
+        }).filter(Boolean);
+
+        if (coordPairs.length < 2) {
+            return null;
+        }
+
+        try {
+            const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': ORS_API_KEY,
+                },
+                body: JSON.stringify({ coordinates: coordPairs, instructions: false }),
+            });
+
+            if (!response.ok) {
+                let errText = '';
+                try { errText = await response.text(); } catch (e) {/* noop */}
+                console.warn('ORS route request failed', response.status, errText);
+                return null;
+            }
+
+            const data = await response.json();
+            if (data && data.features && data.features[0]) {
+                return data.features[0];
+            }
+        } catch (err) {
+            console.warn('ORS route request error', err);
+        }
+
+        return null;
+    }
+
+    const ROUTE_COLORS = {
+        PICKUP: '#0b63d6',
+        DROPOFF: '#0b63d6'
+    };
+
+    function ensureRoutePane(paneName, zIndex) {
+        if (!mapInstance || !paneName) {
+            return null;
+        }
+
+        if (!itineraryRoutePaneCache[paneName]) {
+            let pane = mapInstance.getPane(paneName);
+            if (!pane) {
+                pane = mapInstance.createPane(paneName);
+            }
+            if (pane) {
+                if (typeof zIndex === 'number') {
+                    pane.style.zIndex = String(zIndex);
+                }
+                pane.style.pointerEvents = 'none';
+            }
+            itineraryRoutePaneCache[paneName] = paneName;
+        }
+
+        return paneName;
+    }
+
+    function buildSegmentLayer(segments) {
+        if (!mapInstance) return null;
+        if (!Array.isArray(segments) || segments.length === 0) return null;
+
+        const pickupPane = ensureRoutePane('itinerary-route-pickup', 370);
+        const dropoffPane = ensureRoutePane('itinerary-route-dropoff', 360);
+        const group = L.layerGroup();
+        segments.forEach(segment => {
+            const rawPoints = Array.isArray(segment?.points) ? segment.points : [];
+            const points = rawPoints.map(pt => {
+                if (!Array.isArray(pt) || pt.length < 2) return null;
+                const lat = Number(pt[0]);
+                const lon = Number(pt[1]);
+                if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+                return [lat, lon];
+            }).filter(Boolean);
+
+            if (points.length < 2) {
+                return;
+            }
+
+            const typeKey = (segment?.type || '').toUpperCase();
+            const color = ROUTE_COLORS[typeKey] || ROUTE_COLORS.PICKUP;
+            const precise = Boolean(segment?.precise);
+            const style = precise
+                ? { color, weight: 5, opacity: 0.88 }
+                : { color, weight: 4, opacity: 0.6, dashArray: '6 8' };
+
+            const paneName = typeKey === 'DROPOFF' ? dropoffPane : pickupPane;
+            const layer = L.polyline(points, { ...style, pane: paneName });
+            group.addLayer(layer);
+            if (typeKey === 'PICKUP' && typeof layer.bringToFront === 'function') {
+                layer.bringToFront();
+            }
+        });
+
+        if (group.getLayers().length === 0) {
+            return null;
+        }
+
+        group.addTo(mapInstance);
+        return group;
+    }
+
+    async function ensureItineraryRouteLayer(itinerary) {
+        if (!mapInstance) return null;
+
+        const points = buildItineraryRoutePoints(itinerary);
+        if (points.length < 2) {
+            resetItineraryRoute();
+            return null;
+        }
+
+        const signature = points.map(pt => `${pt[0].toFixed(5)},${pt[1].toFixed(5)}`).join('|');
+        const hasApiKey = ORS_API_KEY && ORS_API_KEY.length > 10;
+        const routeSegments = Array.isArray(itinerary?.fullRouteSegments) ? itinerary.fullRouteSegments : [];
+        const hasSegmentGeometry = routeSegments.some(seg => Array.isArray(seg?.points) && seg.points.length >= 2);
+        const hasServerPreciseRoute = Boolean(itinerary && itinerary.fullRouteIsPrecise && hasSegmentGeometry);
+        const shouldRequestORS = hasApiKey && !hasServerPreciseRoute;
+
+        if (itineraryRouteLayer && itineraryRouteSignature === signature) {
+            const layerIsUsable = !itineraryRouteIsFallback || !shouldRequestORS;
+            if (layerIsUsable) {
+                if (!mapInstance.hasLayer(itineraryRouteLayer)) {
+                    mapInstance.addLayer(itineraryRouteLayer);
+                }
+                return typeof itineraryRouteLayer.getBounds === 'function' ? itineraryRouteLayer.getBounds() : null;
+            }
+        }
+
+        let loaderShown = false;
+        const ensureLoader = () => {
+            if (!loaderShown) {
+                showRouteLoader();
+                loaderShown = true;
+            }
+        };
+        const cleanupLoader = () => {
+            if (loaderShown) {
+                hideRouteLoader();
+                loaderShown = false;
+            }
+        };
+
+        itineraryRouteRequestId += 1;
+        const requestId = itineraryRouteRequestId;
+        ensureLoader();
+
+        if (itineraryRouteLayer && mapInstance.hasLayer(itineraryRouteLayer)) {
+            try { mapInstance.removeLayer(itineraryRouteLayer); } catch (err) { /* ignore */ }
+        }
+        itineraryRouteLayer = null;
+
+        try {
+            let newLayer = null;
+            if (hasSegmentGeometry) {
+                newLayer = buildSegmentLayer(routeSegments);
+                itineraryRouteIsFallback = !Boolean(itinerary?.fullRouteIsPrecise);
+            }
+
+            if (shouldRequestORS) {
+                const feature = await requestORSRouteFeature(points);
+                if (requestId !== itineraryRouteRequestId) {
+                    return null;
+                }
+                if (feature) {
+                    if (newLayer && mapInstance.hasLayer(newLayer)) {
+                        try { mapInstance.removeLayer(newLayer); } catch (err) { /* ignore */ }
+                    }
+                    const paneName = ensureRoutePane('itinerary-route-ors', 365);
+                    newLayer = L.geoJSON(feature, {
+                        style: { color: '#0b63d6', weight: 5, opacity: 0.88 },
+                        pane: paneName
+                    }).addTo(mapInstance);
+                    itineraryRouteIsFallback = false;
+                }
+            }
+
+            if (!newLayer) {
+                const baseStyle = { color: '#0b63d6', weight: 5, opacity: 0.88 };
+                const fallbackStyle = { ...baseStyle, weight: 4, opacity: 0.7, dashArray: '6 8' };
+                const lineStyle = hasServerPreciseRoute ? baseStyle : fallbackStyle;
+                const paneName = ensureRoutePane('itinerary-route-fallback', 355);
+                newLayer = L.polyline(points.map(([lat, lon]) => [lat, lon]), { ...lineStyle, pane: paneName }).addTo(mapInstance);
+                itineraryRouteIsFallback = !hasServerPreciseRoute;
+
+                if (hasSegmentGeometry && itinerary?.fullRouteIsPrecise) {
+                    newLayer.setStyle(baseStyle);
+                }
+            }
+
+            itineraryRouteLayer = newLayer;
+            itineraryRouteSignature = signature;
+
+            return typeof newLayer.getBounds === 'function' ? newLayer.getBounds() : null;
+        } catch (err) {
+            console.warn('Unable to render itinerary route', err);
+            itineraryRouteLayer = null;
+            itineraryRouteSignature = null;
+            itineraryRouteIsFallback = false;
+            return null;
+        } finally {
+            cleanupLoader();
+        }
+    }
+
+    async function renderItineraryMap(itinerary) {
+        if (!mapInstance) return;
+
+        try {
+            clearItineraryMarkers();
+
+            if (!itinerary || !Array.isArray(itinerary.stops) || itinerary.stops.length === 0) {
+                resetItineraryRoute();
+                return;
+            }
+
+            const boundsPoints = [];
+
+            const driverCoord = Array.isArray(itinerary.driverStartCoordinate) ? itinerary.driverStartCoordinate : null;
+            if (driverCoord && driverCoord.length === 2) {
+                const driverLat = Number(driverCoord[0]);
+                const driverLon = Number(driverCoord[1]);
+                if (Number.isFinite(driverLat) && Number.isFinite(driverLon)) {
+                    const driverIcon = L.divIcon({
+                        className: 'driver-marker stop-marker',
+                        html: '<div class="marker-inner"></div>',
+                        iconSize: [32, 36],
+                        iconAnchor: [16, 36],
+                    });
+                    const driverMarker = L.marker([driverLat, driverLon], { icon: driverIcon }).addTo(mapInstance);
+                    driverMarker.bindPopup('Driver start location');
+                    itineraryMarkers.push(driverMarker);
+                    boundsPoints.push([driverLat, driverLon]);
+                }
+            }
+
+            itinerary.stops.forEach((stop, idx) => {
+                if (!Array.isArray(stop.coordinates) || stop.coordinates.length !== 2) return;
+                const lat = Number(stop.coordinates[0]);
+                const lon = Number(stop.coordinates[1]);
+                if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+                const isPickup = (stop.type || '').toUpperCase() === 'PICKUP';
+                const iconClass = isPickup ? 'pickup' : 'dest';
+                const markerHtml = '<div class="marker-inner"><span class="marker-number">' + (idx + 1) + '</span></div>';
+                const icon = L.divIcon({
+                    className: `stop-sequence-marker stop-marker ${iconClass}-marker`,
+                    html: markerHtml,
+                    iconSize: [30, 36],
+                    iconAnchor: [15, 36],
+                });
+                const markerTitle = isPickup ? 'Pickup' : 'Drop-off';
+                const marker = L.marker([lat, lon], { icon }).addTo(mapInstance);
+                marker.bindPopup(`${markerTitle}<br>${escapeHtml(stop.address || '--')}`);
+                itineraryMarkers.push(marker);
+                boundsPoints.push([lat, lon]);
+                if (stop.status === 'CURRENT') {
+                    marker.openPopup();
+                }
+            });
+
+            const routeBounds = await ensureItineraryRouteLayer(itinerary);
+            let combinedBounds = null;
+
+            if (routeBounds) {
+                if (typeof routeBounds.isValid === 'function' && !routeBounds.isValid()) {
+                    combinedBounds = null;
+                } else {
+                    combinedBounds = typeof routeBounds.clone === 'function' ? routeBounds.clone() : routeBounds;
+                }
+            }
+
+            // Ensure markers render above route layers so they remain visible.
+            try {
+                itineraryMarkers.forEach(marker => {
+                    try {
+                        if (marker && typeof marker.setZIndexOffset === 'function') marker.setZIndexOffset(1000);
+                        if (marker && typeof marker.bringToFront === 'function') marker.bringToFront();
+                    } catch (e) { /* ignore individual marker errors */ }
+                });
+            } catch (e) { /* ignore */ }
+
+            boundsPoints.forEach(([lat, lon]) => {
+                if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+                const point = L.latLng(lat, lon);
+                if (!combinedBounds) {
+                    combinedBounds = L.latLngBounds(point, point);
+                } else {
+                    combinedBounds.extend(point);
+                }
+            });
+
+            if (combinedBounds && typeof combinedBounds.isValid === 'function' ? combinedBounds.isValid() : true) {
+                try {
+                    mapInstance.fitBounds(combinedBounds, { padding: [60, 60], maxZoom: 17 });
+                } catch (err) {
+                    console.warn('fitBounds failed', err);
+                }
+            }
+        } catch (err) {
+            console.warn('renderItineraryMap failed', err);
+        }
+    }
+
+    function renderItineraryUI() {
+        if (!itineraryDom.summaryStatusText || !itineraryData) {
+            if (itineraryDom.summaryStatusText) itineraryDom.summaryStatusText.textContent = 'NO ITINERARY';
+            if (itineraryDom.summaryActionBtn) {
+                itineraryDom.summaryActionBtn.textContent = 'Start';
+                itineraryDom.summaryActionBtn.disabled = true;
+            }
+            if (itineraryDom.summaryActionType) itineraryDom.summaryActionType.textContent = '--';
+            if (itineraryDom.summaryAddress) itineraryDom.summaryAddress.textContent = 'Awaiting assignments.';
+            if (itineraryDom.fullBookingCount) itineraryDom.fullBookingCount.textContent = '0';
+            if (itineraryDom.fullCapacity) itineraryDom.fullCapacity.textContent = '0 / 0';
+            if (itineraryDom.fullEarnings) itineraryDom.fullEarnings.textContent = '0.00';
+            if (itineraryDom.summaryStopNum) itineraryDom.summaryStopNum.textContent = '0';
+            if (itineraryDom.summaryStopTotal) itineraryDom.summaryStopTotal.textContent = '0';
+            if (itineraryDom.chatBtn) {
+                itineraryDom.chatBtn.disabled = true;
+                itineraryDom.chatBtn.removeAttribute('data-chat-booking-id');
+            }
+            renderStopList([]);
+            clearItineraryMapLayers();
+            return;
+        }
+
+        const stops = Array.isArray(itineraryData.stops) ? itineraryData.stops : [];
+        if (stops.length === 0) {
+            itineraryDom.summaryStatusText.textContent = 'NO ITINERARY';
+            itineraryDom.summaryActionType.textContent = '--';
+            itineraryDom.summaryAddress.textContent = 'Awaiting assignments.';
+            itineraryDom.summaryActionBtn.disabled = true;
+            itineraryDom.summaryActionBtn.textContent = 'Start';
+            itineraryDom.summaryActionBtn.removeAttribute('data-stop-id');
+            if (itineraryDom.fullBookingCount) itineraryDom.fullBookingCount.textContent = '0';
+            if (itineraryDom.fullCapacity) itineraryDom.fullCapacity.textContent = `${itineraryData.currentCapacity || 0} / ${itineraryData.maxCapacity || 0}`;
+            if (itineraryDom.fullEarnings) itineraryDom.fullEarnings.textContent = (itineraryData.totalEarnings || 0).toFixed(2);
+            if (itineraryDom.summaryStopNum) itineraryDom.summaryStopNum.textContent = '0';
+            if (itineraryDom.summaryStopTotal) itineraryDom.summaryStopTotal.textContent = '0';
+            if (itineraryDom.chatBtn) {
+                itineraryDom.chatBtn.disabled = true;
+                itineraryDom.chatBtn.removeAttribute('data-chat-booking-id');
+            }
+            renderStopList([]);
+            clearItineraryMapLayers();
+            return;
+        }
+
+        currentStopIndex = Math.min(Math.max(Number(itineraryData.currentStopIndex || 0), 0), stops.length - 1);
+        const currentStop = stops[currentStopIndex];
+
+        itineraryDom.summaryStatusText.textContent = 'UP NEXT';
+        const actionPrefix = currentStop.type === 'PICKUP' ? 'PICK UP' : 'DROP OFF';
+        const passengerName = currentStop.passengerName || 'Passenger';
+        const passengerSuffix = currentStop.passengerCount > 1 ? ` (+${currentStop.passengerCount})` : ' (+1)';
+        itineraryDom.summaryActionType.textContent = `${actionPrefix}: ${passengerName}${passengerSuffix}`;
+        itineraryDom.summaryAddress.textContent = currentStop.address || '--';
+        itineraryDom.summaryActionBtn.disabled = false;
+        itineraryDom.summaryActionBtn.textContent = getStopActionLabel(currentStop);
+        itineraryDom.summaryActionBtn.setAttribute('data-stop-id', currentStop.stopId);
+
+        if (itineraryDom.summaryStopNum) itineraryDom.summaryStopNum.textContent = String(currentStopIndex + 1);
+        if (itineraryDom.summaryStopTotal) itineraryDom.summaryStopTotal.textContent = String(stops.length);
+
+        if (itineraryDom.fullBookingCount) itineraryDom.fullBookingCount.textContent = String(itineraryData.totalBookings || 0);
+        if (itineraryDom.fullCapacity) itineraryDom.fullCapacity.textContent = `${itineraryData.currentCapacity || 0} / ${itineraryData.maxCapacity || 0}`;
+        if (itineraryDom.fullEarnings) itineraryDom.fullEarnings.textContent = (itineraryData.totalEarnings || 0).toFixed(2);
+
+        if (itineraryDom.chatBtn) {
+            const chatBookingId = getPreferredChatBookingId();
+            if (chatBookingId) {
+                itineraryDom.chatBtn.disabled = false;
+                itineraryDom.chatBtn.setAttribute('data-chat-booking-id', String(chatBookingId));
+            } else {
+                itineraryDom.chatBtn.disabled = true;
+                itineraryDom.chatBtn.removeAttribute('data-chat-booking-id');
+            }
+        }
+
+        renderStopList(stops);
+        renderItineraryMap(itineraryData);
+    }
+
+    async function fetchItineraryData() {
+        if (!cfg.itineraryEndpoint) return;
+        const showLoaderDuringFetch = !itineraryHasLoaded;
+        if (showLoaderDuringFetch) {
+            showRouteLoader();
+        }
+        try {
+            const response = await fetch(cfg.itineraryEndpoint, { credentials: 'same-origin' });
+            if (!response.ok) {
+                throw new Error(`Status ${response.status}`);
+            }
+            const payload = await response.json();
+            if (!payload || payload.status !== 'success') {
+                throw new Error('Invalid itinerary payload');
+            }
+            itineraryData = payload.itinerary || null;
+            updateTrackingState();
+            renderItineraryUI();
+            if (!itineraryHasLoaded) {
+                itineraryHasLoaded = true;
+            }
+        } catch (err) {
+            console.warn('Failed to fetch itinerary', err);
+        } finally {
+            if (showLoaderDuringFetch) {
+                hideRouteLoader();
+            }
+        }
+    }
+
+    async function completeItineraryStop(stopId) {
+        if (!cfg.completeStopEndpoint || !stopId) return;
+        try {
+            const csrf = cfg.csrfToken || getCookie('csrftoken');
+            const response = await fetch(cfg.completeStopEndpoint, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrf,
+                },
+                body: JSON.stringify({ stopId })
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || response.statusText);
+            }
+
+            const payload = await response.json();
+            if (payload && payload.itinerary) {
+                itineraryData = payload.itinerary;
+                updateTrackingState();
+                renderItineraryUI();
+            } else {
+                fetchItineraryData();
+            }
+        } catch (err) {
+            console.warn('Failed to complete stop', err);
+            alert('Unable to update stop. Please try again.');
+        }
+    }
+
+    function handleSummaryActionClick() {
+        if (!itineraryDom.summaryActionBtn || !itineraryData) return;
+        const stopId = itineraryDom.summaryActionBtn.getAttribute('data-stop-id');
+        if (!stopId) return;
+        itineraryDom.summaryActionBtn.disabled = true;
+        completeItineraryStop(stopId).finally(() => {
+            itineraryDom.summaryActionBtn.disabled = false;
+        });
+    }
+
+    function openTripChatFromUI(event) {
+        if (event) {
+            event.preventDefault();
+        }
+        const preferredIdAttr = itineraryDom.chatBtn ? itineraryDom.chatBtn.getAttribute('data-chat-booking-id') : null;
+        const parsedId = preferredIdAttr ? Number(preferredIdAttr) : NaN;
+        const bookingId = Number.isFinite(parsedId) ? parsedId : getPreferredChatBookingId();
+        if (typeof window.openDriverChatModal === 'function') {
+            window.openDriverChatModal(bookingId);
+        }
     }
 
     // Driver chat modal and helpers
@@ -174,13 +786,122 @@
         function getCookie(name) { let cookieValue = null; if (document.cookie && document.cookie !== '') { const cookies = document.cookie.split(';'); for (let i = 0; i < cookies.length; i++) { const cookie = cookies[i].trim(); if (cookie.substring(0, name.length + 1) === (name + '=')) { cookieValue = decodeURIComponent(cookie.substring(name.length + 1)); break; } } } return cookieValue; }
 
         async function loadDriverMessages() {
-            if (!_driverChatBookingId) return; const res = await fetch(`/chat/api/booking/${_driverChatBookingId}/messages/`, { credentials: 'same-origin' }); if (!res.ok) { document.getElementById('driverChatMessages').innerHTML = '<p class="muted">Unable to load messages.</p>'; return; } const data = await res.json(); const container = document.getElementById('driverChatMessages'); container.innerHTML = ''; if (!data.messages || data.messages.length === 0) { container.innerHTML = '<p class="muted">No messages yet.</p>'; return; }
-            let lastDate = null; data.messages.forEach(m => { const msgDate = new Date(m.timestamp).toDateString(); if (msgDate !== lastDate) { const sep = document.createElement('div'); sep.className = 'chat-date-sep'; sep.textContent = new Date(m.timestamp).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); container.appendChild(sep); lastDate = msgDate; } const div = document.createElement('div'); div.style.marginBottom = '8px'; const own = (m.sender_id == userId); div.className = own ? 'chat-msg-own' : 'chat-msg-other'; div.innerHTML = `<div class="chat-msg-meta">${m.sender_username} • ${new Date(m.timestamp).toLocaleTimeString()}</div><div>${escapeHtml(m.message)}</div>`; container.appendChild(div); });
-            try { const newest = container.lastElementChild; container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }); if (newest) { newest.classList.add('flash-animate'); setTimeout(() => newest.classList.remove('flash-animate'), 900); } } catch(e) { container.scrollTop = container.scrollHeight; }
+            if (!_driverChatBookingId) {
+                return;
+            }
+
+            const container = document.getElementById('driverChatMessages');
+            let response;
+            try {
+                response = await fetch(`/chat/api/booking/${_driverChatBookingId}/messages/`, { credentials: 'same-origin' });
+            } catch (fetchErr) {
+                container.innerHTML = '<p class="muted">Unable to load messages.</p>';
+                return;
+            }
+
+            if (!response.ok) {
+                container.innerHTML = '<p class="muted">Unable to load messages.</p>';
+                return;
+            }
+
+            let payload;
+            try {
+                payload = await response.json();
+            } catch (parseErr) {
+                container.innerHTML = '<p class="muted">Unable to load messages.</p>';
+                return;
+            }
+
+            const messages = Array.isArray(payload.messages) ? payload.messages : [];
+            if (!messages.length) {
+                container.innerHTML = '<p class="muted">No messages yet.</p>';
+                const titleEl = document.getElementById('driverChatTitle');
+                if (titleEl) titleEl.textContent = 'Trip Chat';
+                return;
+            }
+
+            const bookingIds = new Set();
+            messages.forEach(msg => {
+                if (msg && msg.booking_id) {
+                    bookingIds.add(msg.booking_id);
+                }
+            });
+
+            container.innerHTML = '';
+            let lastDate = null;
+            messages.forEach(msg => {
+                const timestamp = new Date(msg.timestamp);
+                const dateKey = timestamp.toDateString();
+                if (dateKey !== lastDate) {
+                    const sep = document.createElement('div');
+                    sep.className = 'chat-date-sep';
+                    sep.textContent = timestamp.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                    container.appendChild(sep);
+                    lastDate = dateKey;
+                }
+
+                const div = document.createElement('div');
+                div.style.marginBottom = '8px';
+                const own = Number(msg.sender_id) === Number(userId);
+                div.className = own ? 'chat-msg-own' : 'chat-msg-other';
+
+                const senderName = escapeHtml(msg.sender_display_name || msg.sender_username || 'Participant');
+                const senderRole = msg.sender_role ? ` • ${escapeHtml(msg.sender_role)}` : '';
+                const timeLabel = timestamp.toLocaleTimeString();
+                const showBookingContext = bookingIds.size > 1;
+                const bookingLabel = showBookingContext ? `<div class="chat-msg-booking">${escapeHtml(msg.booking_label || `Booking ${msg.booking_id}`)}</div>` : '';
+
+                div.innerHTML = `
+                    <div class="chat-msg-meta">${senderName}${senderRole} • ${timeLabel}</div>
+                    ${bookingLabel}
+                    <div>${escapeHtml(msg.message)}</div>
+                `;
+                container.appendChild(div);
+            });
+
+            try {
+                const newest = container.lastElementChild;
+                container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                if (newest) {
+                    newest.classList.add('flash-animate');
+                    setTimeout(() => newest.classList.remove('flash-animate'), 900);
+                }
+            } catch (e) {
+                container.scrollTop = container.scrollHeight;
+            }
+
+            const titleEl = document.getElementById('driverChatTitle');
+            if (titleEl) {
+                titleEl.textContent = bookingIds.size > 1 ? `Trip Chat (${bookingIds.size} bookings)` : 'Trip Chat';
+            }
         }
 
-    function openDriverChatModal(bookingId) { _driverChatBookingId = bookingId; const el = document.getElementById('driverChatModal'); el.style.display = 'block'; document.getElementById('driverChatTitle').textContent = `Chat (Booking ${bookingId})`; loadDriverMessages(); /* poll less often; consider switching to WebSockets in production */ _driverChatPolling = setInterval(loadDriverMessages, 6000); }
-        function closeDriverChatModal() { const el = document.getElementById('driverChatModal'); el.style.display = 'none'; _driverChatBookingId = null; if (_driverChatPolling) { clearInterval(_driverChatPolling); _driverChatPolling = null; } }
+        function openDriverChatModal(bookingId) {
+            const normalizedId = Number.isFinite(Number(bookingId)) ? Number(bookingId) : null;
+            _driverChatBookingId = normalizedId || getPreferredChatBookingId();
+            if (!_driverChatBookingId) {
+                alert('No active bookings to chat with yet.');
+                return;
+            }
+            const el = document.getElementById('driverChatModal');
+            el.style.display = 'block';
+            const titleEl = document.getElementById('driverChatTitle');
+            if (titleEl) {
+                titleEl.textContent = 'Trip Chat';
+            }
+            loadDriverMessages();
+            _driverChatPolling = setInterval(loadDriverMessages, 6000);
+        }
+
+        function closeDriverChatModal() {
+            const el = document.getElementById('driverChatModal');
+            el.style.display = 'none';
+            _driverChatBookingId = null;
+            if (_driverChatPolling) {
+                clearInterval(_driverChatPolling);
+                _driverChatPolling = null;
+            }
+        }
 
         // Attach events
         document.getElementById('driverChatClose').addEventListener('click', (e) => { e.preventDefault(); closeDriverChatModal(); });
@@ -188,7 +909,14 @@
 
         // Expose open function for sidebar button
         window.openDriverChatModal = openDriverChatModal;
-        window.showDriverChatButton = function() { const card = document.querySelector('.driver-booking-card'); if (card) { try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(e){} card.classList.add('pulse-highlight'); setTimeout(() => card.classList.remove('pulse-highlight'), 2400); } };
+        window.showDriverChatButton = function() {
+            const card = document.getElementById('itinerary-card');
+            if (card) {
+                try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* ignore */ }
+                card.classList.add('pulse-highlight');
+                setTimeout(() => card.classList.remove('pulse-highlight'), 2400);
+            }
+        };
     })();
 
     // Map + active booking initialization
@@ -200,15 +928,9 @@
             setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 250);
             if (navigator.geolocation) navigator.geolocation.getCurrentPosition((pos) => { map.setView([pos.coords.latitude, pos.coords.longitude], 15); }, () => {}, { enableHighAccuracy: true, timeout: 5000 });
 
-            let bookingId = activeBookingIdFromTemplate || document.body.getAttribute('data-active-booking-id');
-            if (bookingId && bookingId !== 'null') startActiveBookingDisplay(bookingId, map);
-            else {
-                // initial fetch for active booking
-                fetch('/api/driver/active-booking/').then(r => r.json()).then(d => { if (d.booking_id) startActiveBookingDisplay(d.booking_id, map); }).catch(()=>{});
-            }
-
             // Expose map instance for review buttons and wire review button clicks
             window.DRIVER_MAP = map;
+            initItinerary(map);
             // Sidebar toggles: rides icon opens the hidden sidebar-content; open-rides button also opens it
             try {
                 const ridesIconEl = document.getElementById('rides-icon');
@@ -246,8 +968,21 @@
                 console.log('reviewBooking called for', bookingId);
                 if (!bookingId) return;
                 const routeDetails = document.getElementById('route-details');
-                const loader = document.getElementById('driver-route-loader');
-                if (loader) { loader.classList.remove('hidden'); loader.setAttribute('aria-hidden','false'); }
+                let loaderShown = false;
+                const ensureLoader = () => {
+                    if (!loaderShown) {
+                        showRouteLoader();
+                        loaderShown = true;
+                    }
+                };
+                const finalizeLoader = () => {
+                    if (loaderShown) {
+                        hideRouteLoader();
+                        loaderShown = false;
+                    }
+                };
+                ensureLoader();
+
                 fetch(`/api/booking/${bookingId}/route_info/`).then(r => r.json()).then(async (info) => {
                     if (!info || info.status !== 'success') { console.log('route_info returned', info); if (routeDetails) routeDetails.textContent = 'No route info available.'; return; }
                     // Draw pickup->destination route for review
@@ -287,7 +1022,7 @@
                                                 // remove previous driver->pickup layer if present
                                                 try { if (window._driverReviewDriverToPickupLayer) { window.DRIVER_MAP.removeLayer(window._driverReviewDriverToPickupLayer); window._driverReviewDriverToPickupLayer = null; } } catch(e){}
                                                 // draw solid green driver->pickup route (solid line - not dashed)
-                                                window._driverReviewDriverToPickupLayer = L.geoJSON(dpData.features[0], { style: { color: '#28a745', weight: 5, opacity: 0.8 } }).addTo(window.DRIVER_MAP);
+                                                window._driverReviewDriverToPickupLayer = L.geoJSON(dpData.features[0], { style: { color: '#0b63d6', weight: 5, opacity: 0.8 } }).addTo(window.DRIVER_MAP);
                                                 try { const dpBounds = window._driverReviewDriverToPickupLayer.getBounds(); if (dpBounds) { window._driverReviewLayer.getBounds().extend(dpBounds); } } catch(e){}
                                             } else { console.log('Driver->pickup ORS returned no features', dpData); }
                                         } else {
@@ -332,7 +1067,7 @@
                             if (routeDetails) routeDetails.innerHTML = `<strong>Pickup:</strong> ${info.pickup_address || '--'}<br><strong>Destination:</strong> ${info.destination_address || '--'}<br><strong>ETA:</strong> ${seg?Math.ceil(seg.duration/60)+' min':'--'} <strong>Distance:</strong> ${seg?(seg.distance/1000).toFixed(2)+' km':'--'}`;
                         } else { if (routeDetails) routeDetails.textContent = 'No route geometry returned.'; }
                     } catch (e) { console.error('Review route error', e); if (routeDetails) routeDetails.textContent = 'Error fetching route.'; }
-                }).catch(e => { console.warn('Failed to fetch route_info', e); }).finally(() => { if (loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden','true'); } });
+                }).catch(e => { console.warn('Failed to fetch route_info', e); }).finally(finalizeLoader);
             }
 
             // Expose reviewBooking globally so other scripts or delegated handlers can call it
@@ -352,6 +1087,37 @@
             document.querySelectorAll('.review-ride-btn').forEach(btn => {
                 btn.addEventListener('click', (ev) => {
                     ev.preventDefault(); const bid = btn.getAttribute('data-booking-id'); reviewBooking(bid);
+                });
+            });
+
+            // Intercept accept ride form submissions and perform AJAX POST to avoid accidental delegation
+            document.querySelectorAll('form.accept-ride-form').forEach(form => {
+                form.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    try {
+                        const bid = form.getAttribute('data-booking-id');
+                        const submitBtn = form.querySelector('button[type="submit"]');
+                        if (submitBtn) submitBtn.disabled = true;
+                        // CSRF token: prefer global config then fallback to cookie
+                        const csrf = (cfg && cfg.csrfToken) ? cfg.csrfToken : (function(){ let name='csrftoken'; let v=null; if (document.cookie && document.cookie!=='') { const cookies=document.cookie.split(';'); for(let i=0;i<cookies.length;i++){ const c=cookies[i].trim(); if (c.substring(0,name.length+1)===(name+'=')){ v=decodeURIComponent(c.substring(name.length+1)); break; } } } return v; })();
+                        const resp = await fetch(form.action, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': csrf }, body: new URLSearchParams(new FormData(form)) });
+                        if (!resp.ok) {
+                            // On failure, re-enable button and show a basic alert
+                            if (submitBtn) submitBtn.disabled = false;
+                            const txt = await resp.text();
+                            alert('Accept failed: ' + (txt || resp.statusText));
+                            return;
+                        }
+                        // On success, server redirects to driver dashboard; just reload to refresh UI
+                        // But we also attempt to start active booking display quickly if booking id available
+                        try { const data = await resp.clone().text(); } catch(e){}
+                        // small delay to allow server-side to settle then reload
+                        setTimeout(() => { try { window.location.reload(); } catch(e){ location.reload(); } }, 300);
+                    } catch (err) {
+                        console.warn('Accept request failed', err);
+                        try { const submitBtn = form.querySelector('button[type="submit"]'); if (submitBtn) submitBtn.disabled = false; } catch(e){}
+                        alert('Network error while accepting ride.');
+                    }
                 });
             });
 
@@ -389,25 +1155,6 @@
                 } catch(err) { console.warn('Delegated review click handler failed', err); }
             });
 
-            // Automatic refresh: poll for active booking changes so driver sees assignment without full page reload
-            try {
-                async function pollDriverActiveBooking() {
-                    try {
-                        const resp = await fetch('/api/driver/active-booking/');
-                        if (!resp.ok) return;
-                        const d = await resp.json();
-                        const remoteId = d.booking_id || null;
-                        const current = document.body.getAttribute('data-active-booking-id') || activeBookingIdFromTemplate || null;
-                        if (remoteId && String(remoteId) !== String(current)) {
-                            // update body attribute and start display
-                            document.body.setAttribute('data-active-booking-id', remoteId);
-                            try { startActiveBookingDisplay(remoteId, map); } catch(e) { console.warn('startActiveBookingDisplay failed', e); }
-                        }
-                    } catch(e) { console.warn('pollDriverActiveBooking failed', e); }
-                }
-                // Poll less frequently to reduce load (server returns active booking quickly)
-                setInterval(pollDriverActiveBooking, 10000);
-            } catch(e) {}
         } catch (e) { console.warn('Driver map init failed', e); }
     });
 
@@ -419,9 +1166,26 @@
             const locationData = { lat: position.coords.latitude, lon: position.coords.longitude, accuracy: position.coords.accuracy, heading: position.coords.heading, speed: position.coords.speed };
             try { await fetch('/api/driver/update_location/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') }, body: JSON.stringify(locationData) }); } catch(e) { console.error('Error updating location:', e); }
         }
-        function startLocationTracking(force){ if (!navigator.geolocation) { alert('Geolocation is not supported by your browser'); return; } locationWatchId = navigator.geolocation.watchPosition(handleLocationUpdate, (err)=>console.error('loc err',err), { enableHighAccuracy:true, timeout:5000, maximumAge:0 }); isTracking = true; const activeBookingId = document.body.getAttribute('data-active-booking-id'); if (activeBookingId && force) { /* lock UI if desired */ } }
-        function stopLocationTracking(){ if (locationWatchId !== null) { navigator.geolocation.clearWatch(locationWatchId); locationWatchId = null; } isTracking = false; }
-        document.addEventListener('DOMContentLoaded', function(){ const activeBookingId = document.body.getAttribute('data-active-booking-id'); if (activeBookingId) { startLocationTracking(true); localStorage.setItem('driverTracking','force'); } else { if (localStorage.getItem('driverTracking') === 'true') startLocationTracking(false); } });
+        function startLocationTracking(force){
+            if (!navigator.geolocation) { alert('Geolocation is not supported by your browser'); return; }
+            if (isTracking && !force) { return; }
+            if (locationWatchId !== null) {
+                navigator.geolocation.clearWatch(locationWatchId);
+                locationWatchId = null;
+            }
+            locationWatchId = navigator.geolocation.watchPosition(handleLocationUpdate, (err)=>console.error('loc err',err), { enableHighAccuracy:true, timeout:5000, maximumAge:0 });
+            isTracking = true;
+            localStorage.setItem('driverTracking', force ? 'force' : 'true');
+        }
+    function stopLocationTracking(){ if (locationWatchId !== null) { navigator.geolocation.clearWatch(locationWatchId); locationWatchId = null; } isTracking = false; localStorage.removeItem('driverTracking'); }
+        document.addEventListener('DOMContentLoaded', function(){
+            const hasItinerary = document.body.getAttribute('data-has-itinerary') === 'true';
+            if (hasItinerary) {
+                startLocationTracking(true);
+            } else if (localStorage.getItem('driverTracking') === 'true') {
+                startLocationTracking(false);
+            }
+        });
         window.startLocationTracking = startLocationTracking; window.stopLocationTracking = stopLocationTracking;
     })();
 

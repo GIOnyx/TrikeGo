@@ -42,6 +42,8 @@ class Driver(models.Model):
 class Tricycle(models.Model):
     plate_number = models.CharField(max_length=32, unique=True)
     color = models.CharField(max_length=32)
+    # Maximum number of passengers this tricycle can carry. Default to 1 for single-rider trikes.
+    max_capacity = models.PositiveSmallIntegerField(default=1)
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='tricycles')
     image_url = models.URLField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

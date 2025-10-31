@@ -26,6 +26,7 @@ from decimal import Decimal
 from django.contrib.auth.views import redirect_to_login
 from django.contrib.auth import logout as auth_logout
 from django.views.decorators.csrf import csrf_protect
+from booking.utils import seats_available, pickup_within_detour, ensure_booking_stops
 try:
     from booking.tasks import compute_and_cache_route
 except Exception:
@@ -186,23 +187,47 @@ def accept_ride(request, booking_id):
     if not request.user.is_authenticated or request.user.trikego_user != 'D':
         return redirect('user:landing')
 
-    # Enforce: driver can only manage one active booking
-    driver_has_active = Booking.objects.filter(
-        driver=request.user,
-        status__in=['accepted', 'on_the_way', 'started']
-    ).exists()
-    if driver_has_active:
-        messages.error(request, "You already have an active trip. Complete or cancel it first.")
+    # Enforce capacity and proximity checks to allow multi-booking.
+    # Fetch booking early so we can inspect requested passengers.
+    booking = get_object_or_404(Booking, id=booking_id, status='pending', driver__isnull=True)
+
+    try:
+        requested = int(getattr(booking, 'passengers', 1) or 1)
+    except Exception:
+        requested = 1
+
+    try:
+        if not seats_available(request.user, additional_seats=requested):
+            messages.error(request, "Cannot accept ride: vehicle capacity would be exceeded.")
+            return redirect('user:driver_dashboard')
+    except Exception:
+        messages.error(request, "Could not verify vehicle capacity. Please try again or contact support.")
         return redirect('user:driver_dashboard')
 
     # Also prevent acceptance if rider already has an active trip
-    booking = get_object_or_404(Booking, id=booking_id, status='pending', driver__isnull=True)
     rider_active = Booking.objects.filter(
         rider=booking.rider,
         status__in=['accepted', 'on_the_way', 'started']
     ).exists()
     if rider_active:
         messages.error(request, "Rider already has an active trip.")
+        return redirect('user:driver_dashboard')
+
+    # Proximity/detour check (Option A): require pickup to be within X km of any point on driver's route
+    try:
+        pickup_lat = booking.pickup_latitude
+        pickup_lon = booking.pickup_longitude
+        # If coordinates missing, conservatively block acceptance
+        if pickup_lat is None or pickup_lon is None:
+            messages.error(request, "Cannot verify pickup location for detour check.")
+            return redirect('user:driver_dashboard')
+
+        allowed = pickup_within_detour(request.user, pickup_lat, pickup_lon, max_km=5.0)
+        if not allowed:
+            messages.error(request, "Pickup is too far from your current route to accept this booking.")
+            return redirect('user:driver_dashboard')
+    except Exception:
+        messages.warning(request, "Could not compute detour check; please ensure location sharing is enabled.")
         return redirect('user:driver_dashboard')
 
     booking.driver = request.user
@@ -238,6 +263,7 @@ def accept_ride(request, booking_id):
         messages.warning(request, f"Could not calculate route: {str(e)}")
     
     booking.save()
+    ensure_booking_stops(booking)
     messages.success(request, f"You have accepted the ride from {booking.pickup_address} to {booking.destination_address}.")
     # Schedule an asynchronous task to compute and cache route information (non-blocking)
     try:

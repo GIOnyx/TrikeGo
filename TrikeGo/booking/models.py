@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from user.models import CustomUser 
 from django.utils import timezone
@@ -25,6 +27,8 @@ class Booking(models.Model):
     destination_address = models.CharField(max_length=255)
     destination_latitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)
     destination_longitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)
+    # Number of passengers for this booking. Default is 1.
+    passengers = models.PositiveSmallIntegerField(default=1)
 
     STATUS_CHOICES = [
         ('pending', 'Pending Driver Assignment'),
@@ -62,6 +66,46 @@ class Booking(models.Model):
             models.Index(fields=['booking_time']),
             models.Index(fields=['driver', 'status']),
         ]
+
+
+class BookingStop(models.Model):
+    """Represents a single pickup or dropoff stop for a booking within a driver's itinerary."""
+
+    STOP_TYPES = (
+        ('PICKUP', 'Pickup'),
+        ('DROPOFF', 'Dropoff'),
+    )
+
+    STATUS_CHOICES = (
+        ('UPCOMING', 'Upcoming'),
+        ('CURRENT', 'Current'),
+        ('COMPLETED', 'Completed'),
+    )
+
+    stop_uid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='stops')
+    sequence = models.PositiveIntegerField(default=0, db_index=True)
+    stop_type = models.CharField(max_length=8, choices=STOP_TYPES)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='UPCOMING')
+    passenger_count = models.PositiveSmallIntegerField(default=1)
+    address = models.CharField(max_length=255)
+    latitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True)
+    note = models.TextField(blank=True, null=True)
+    scheduled_time = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['sequence', 'created_at']
+        indexes = [
+            models.Index(fields=['booking', 'sequence']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"Stop {self.stop_type} for booking {self.booking_id} (seq {self.sequence})"
 
 
 class DriverLocation(models.Model):

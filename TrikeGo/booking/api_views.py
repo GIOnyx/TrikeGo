@@ -7,8 +7,10 @@ from django.utils import timezone
 from datetime import timedelta
 from decimal import Decimal
 
-from .models import DriverLocation, Booking, RouteSnapshot
+from .models import DriverLocation, Booking, RouteSnapshot, BookingStop
 from .services import RoutingService
+from .utils import build_driver_itinerary, ensure_booking_stops, plan_driver_stops
+from user.models import Driver, Rider
 
 
 @api_view(['POST'])
@@ -40,12 +42,12 @@ def update_driver_location(request):
     )
     
     # Check for active bookings and reroute if needed
-    active_booking = Booking.objects.filter(
+    active_bookings = Booking.objects.filter(
         driver=request.user,
         status__in=['accepted', 'on_the_way', 'started']
-    ).first()
-    
-    if active_booking:
+    )
+
+    for active_booking in active_bookings:
         check_and_reroute(active_booking, location)
     
     return Response({
@@ -173,4 +175,84 @@ def manual_reroute(request, booking_id):
         return Response({'status': 'success', 'message': 'Route recalculated'})
     except DriverLocation.DoesNotExist:
         return Response({'error': 'Driver location not available'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def driver_itinerary(request):
+    """Return the consolidated itinerary for the authenticated driver."""
+    if request.user.trikego_user != 'D':
+        return Response({'error': 'Only drivers can access the itinerary.'}, status=status.HTTP_403_FORBIDDEN)
+
+    active_bookings = Booking.objects.filter(
+        driver=request.user,
+        status__in=['accepted', 'on_the_way', 'started']
+    )
+
+    for booking in active_bookings:
+        ensure_booking_stops(booking)
+
+    payload = build_driver_itinerary(request.user)
+    return Response(payload)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def complete_itinerary_stop(request):
+    """Mark a specific itinerary stop as completed and refresh the driver's itinerary."""
+    if request.user.trikego_user != 'D':
+        return Response({'error': 'Only drivers can update itinerary stops.'}, status=status.HTTP_403_FORBIDDEN)
+
+    stop_id = request.data.get('stopId') or request.data.get('stop_id')
+    if not stop_id:
+        return Response({'error': 'stopId is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        stop = BookingStop.objects.select_related('booking', 'booking__rider').get(
+            stop_uid=stop_id,
+            booking__driver=request.user,
+            booking__status__in=['accepted', 'on_the_way', 'started']
+        )
+    except BookingStop.DoesNotExist:
+        return Response({'error': 'Stop not found or already completed.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if stop.status == 'COMPLETED':
+        return Response({'status': 'success', 'message': 'Stop already completed.', 'itinerary': build_driver_itinerary(request.user)['itinerary']})
+
+    stop.status = 'COMPLETED'
+    stop.completed_at = timezone.now()
+    stop.save(update_fields=['status', 'completed_at', 'updated_at'])
+
+    booking = stop.booking
+
+    if stop.stop_type == 'PICKUP':
+        if booking.status != 'started':
+            booking.status = 'started'
+            booking.start_time = booking.start_time or timezone.now()
+            booking.save(update_fields=['status', 'start_time'])
+    else:  # dropoff
+        booking.status = 'completed'
+        booking.end_time = timezone.now()
+        booking.save(update_fields=['status', 'end_time'])
+
+        # Reset rider availability
+        Rider.objects.filter(user=booking.rider).update(status='Available')
+
+    # If all bookings completed, set driver status to online
+    remaining_stops = BookingStop.objects.filter(
+        booking__driver=request.user,
+        status__in=['UPCOMING', 'CURRENT'],
+        booking__status__in=['accepted', 'on_the_way', 'started']
+    )
+
+    if remaining_stops.exists():
+        Driver.objects.filter(user=request.user).update(status='In_trip')
+    else:
+        Driver.objects.filter(user=request.user).update(status='Online')
+
+    # Ensure pick/drop pair consistency – if dropoff completed, mark booking rider status handled above
+    plan_driver_stops(request.user)
+
+    payload = build_driver_itinerary(request.user)
+    return Response(payload)
     

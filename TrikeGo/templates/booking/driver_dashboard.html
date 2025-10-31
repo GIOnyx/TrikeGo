@@ -83,9 +83,9 @@
                                         <div class="ride-meta">Dropoff: {{ ride.destination_address|truncatechars:60 }}</div>
                                     <div style="margin-top:6px; display:flex; gap:6px;">
                                         <button class="btn btn-secondary review-ride-btn" data-booking-id="{{ ride.id }}" onclick="window.reviewBooking && window.reviewBooking({{ ride.id }});">Review</button>
-                                        <form method="POST" action="{% url 'user:accept_ride' ride.id %}" style="display:inline;">
+                                        <form class="accept-ride-form" data-booking-id="{{ ride.id }}" method="POST" action="{% url 'user:accept_ride' ride.id %}" style="display:inline;">
                                             {% csrf_token %}
-                                            <button type="submit" class="btn btn-success">Accept</button>
+                                            <button type="submit" class="btn btn-success" id="accept-btn-{{ ride.id }}">Accept</button>
                                         </form>
                                     </div>
                                 </li>
@@ -112,39 +112,32 @@
             </div>
         </div>
 
-        {% if active_booking %}
-    <div id="driver-booking-card" class="driver-info-card" aria-hidden="false">
-            <div class="driver-card-inner" style="padding:12px; background:#f9fafc; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.12);">
-                        <div style="display:flex; gap:12px; align-items:flex-start;">
-                            <div class="driver-avatar" style="width:56px; height:56px; background:#eee; border-radius:999px; flex:0 0 56px;"></div>
-                            <div class="driver-details" style="flex:1;">
-                                <div class="driver-top" style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-                                    <div>
-                                        <div class="driver-name">Active Booking #{{ active_booking.id }}</div>
-                                        <div class="driver-meta">Rider: {{ active_booking.rider.get_full_name|default:active_booking.rider.username }}</div>
-                                    </div>
-                                    <div style="flex:0 0 auto;">
-                                        <!-- Chat button moved to the top-right of the card for quick access -->
-                                        <button id="chat-booking-btn" class="chat-btn" type="button" title="Chat with rider" onclick="(function(){ try{ window.openDriverChatModal && window.openDriverChatModal({{ active_booking.id }}); }catch(e){console.warn(e);} })()">Chat</button>
-                                    </div>
-                                </div>
-                                <div class="driver-info-extra" style="margin-top:8px;">
-                                    <div><strong>Pickup:</strong> <span id="booking-pickup">{{ active_booking.pickup_address }}</span></div>
-                                    <div><strong>Destination:</strong> <span id="booking-dest">{{ active_booking.destination_address }}</span></div>
-                                    <div><strong>Distance:</strong> <span id="booking-distance">-- km</span></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div style="clear:both; margin-top:12px; display:flex; gap:8px; align-items:center;">
-                            <form method="post" action="{% url 'user:complete_booking' active_booking.id %}" style="display:inline; margin:0;">
-                                {% csrf_token %}
-                                <button id="complete-booking-btn" type="submit" class="btn btn-success">Complete</button>
-                            </form>
-                            <button id="cancel-booking-btn" type="button" class="btn btn-danger" data-cancel-url="{% url 'user:cancel_accepted_booking' active_booking.id %}">Cancel</button>
-                        </div>
+        <div id="itinerary-card" class="driver-info-card collapsed" aria-hidden="false">
+            <div id="itinerary-summary" class="itinerary-summary">
+                <div class="itinerary-summary-header">
+                    <span><span id="summary-status-text">UP NEXT</span>: (Stop <span id="summary-stop-num">0</span> of <span id="summary-stop-total">0</span>)</span>
+                    <button id="itinerary-expand-btn" type="button">View Full Itinerary</button>
+                    <button id="open-chat-btn" class="chat-btn" type="button" title="Open trip chat">Trip Chat</button>
+                </div>
+                <h3 id="summary-action-type">--</h3>
+                <p id="summary-address">Awaiting assignments.</p>
+                <button id="summary-action-btn" class="btn btn-success" type="button" style="width: 100%;" disabled>Start</button>
+            </div>
+
+            <div id="itinerary-full" class="itinerary-full" style="display:none;">
+                <div class="itinerary-full-header">
+                    <h3>Your Trip (<span id="full-booking-count">0</span> Bookings)</h3>
+                    <button id="itinerary-collapse-btn" type="button">Hide</button>
+                </div>
+
+                <div class="itinerary-stats">
+                    <span>Capacity: <span id="full-capacity">0 / 0</span> Seats</span>
+                    <span>Earnings: ₱<span id="full-earnings">0.00</span></span>
+                </div>
+
+                <ul id="itinerary-stop-list" class="stop-list"></ul>
             </div>
         </div>
-        {% endif %}
     </div>
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
@@ -154,7 +147,8 @@
             ORS_API_KEY: '{{ settings.OPENROUTESERVICE_API_KEY }}',
             userId: {{ user.id|default:'null' }},
             csrfToken: '{{ csrf_token }}',
-            activeBookingId: {% if active_booking %}{{ active_booking.id }}{% else %}null{% endif %}
+            itineraryEndpoint: '{% url "booking:driver_itinerary" %}',
+            completeStopEndpoint: '{% url "booking:complete_itinerary_stop" %}'
         };
     </script>
     <script src="{% static 'booking/js/driver_dashboard.js' %}?v=2"></script>
