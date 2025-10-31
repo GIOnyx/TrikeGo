@@ -12,6 +12,24 @@
         });
     }
 
+    function toNumber(value) {
+        if (value === null || value === undefined) return null;
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
+    }
+
+    function formatMinutes(value) {
+        const num = toNumber(value);
+        if (num == null) return null;
+        return Math.max(1, Math.round(num));
+    }
+
+    function formatKm(value) {
+        const num = toNumber(value);
+        if (num == null) return null;
+        return num.toFixed(2);
+    }
+
     // ORSAutocomplete class (same behavior as inline version)
     class ORSAutocomplete {
         constructor(inputId, resultsId, latFieldId, lonFieldId, onSelectCallback) {
@@ -121,6 +139,149 @@
     let _prevPickupToDestCoords = null;
     let _lastDTData = null;
     let _lastRDData = null;
+    let itineraryRouteLayer = null;
+
+    function clearItineraryRouteLayer() {
+        if (itineraryRouteLayer && window.map) {
+            try { window.map.removeLayer(itineraryRouteLayer); } catch (err) { /* ignore */ }
+        }
+        itineraryRouteLayer = null;
+    }
+
+    function clearItineraryMarkers() {
+        if (!Array.isArray(itineraryMarkers) || itineraryMarkers.length === 0) {
+            itineraryMarkers = [];
+            return;
+        }
+        itineraryMarkers.forEach(marker => {
+            try {
+                if (marker && window.map) {
+                    window.map.removeLayer(marker);
+                }
+            } catch (err) { /* ignore individual marker errors */ }
+        });
+        itineraryMarkers = [];
+    }
+
+    function renderItineraryRoute(itinerary) {
+        if (!window.map) return null;
+        if (!itinerary || typeof itinerary !== 'object') {
+            clearItineraryRouteLayer();
+            return null;
+        }
+
+        clearItineraryRouteLayer();
+
+        const baseStyle = { color: '#0b63d6', weight: 5, opacity: 0.88 };
+        const fallbackStyle = { color: '#0b63d6', weight: 4, opacity: 0.7, dashArray: '6 8' };
+        const group = L.featureGroup();
+        let addedLayer = false;
+
+        const segments = Array.isArray(itinerary.fullRouteSegments) ? itinerary.fullRouteSegments : [];
+        segments.forEach(segment => {
+            const coords = Array.isArray(segment?.points) ? segment.points : [];
+            const points = coords.map(pair => {
+                if (!Array.isArray(pair) || pair.length < 2) return null;
+                const lat = Number(pair[0]);
+                const lon = Number(pair[1]);
+                if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+                return [lat, lon];
+            }).filter(Boolean);
+
+            if (points.length < 2) {
+                return;
+            }
+
+            const precise = Boolean(segment?.precise);
+            const style = precise ? { ...baseStyle } : { ...fallbackStyle };
+            group.addLayer(L.polyline(points, style));
+            addedLayer = true;
+        });
+
+        if (!addedLayer) {
+            const polyPoints = Array.isArray(itinerary.fullRoutePolyline) ? itinerary.fullRoutePolyline : [];
+            const points = polyPoints.map(pair => {
+                if (!Array.isArray(pair) || pair.length < 2) return null;
+                const lat = Number(pair[0]);
+                const lon = Number(pair[1]);
+                if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+                return [lat, lon];
+            }).filter(Boolean);
+
+            if (points.length >= 2) {
+                const style = itinerary.fullRouteIsPrecise ? { ...baseStyle } : { ...fallbackStyle };
+                group.addLayer(L.polyline(points, style));
+                addedLayer = true;
+            }
+        }
+
+        if (!addedLayer) {
+            return null;
+        }
+
+        itineraryRouteLayer = group.addTo(window.map);
+        return typeof group.getBounds === 'function' ? group.getBounds() : null;
+    }
+
+    function renderItineraryStops(itinerary) {
+        if (!window.map) return null;
+        clearItineraryMarkers();
+
+        const stops = Array.isArray(itinerary?.stops) ? itinerary.stops : [];
+        if (stops.length === 0) {
+            return null;
+        }
+
+        let bounds = null;
+
+        stops.forEach((stop, index) => {
+            if (!Array.isArray(stop?.coordinates) || stop.coordinates.length !== 2) {
+                return;
+            }
+            const lat = Number(stop.coordinates[0]);
+            const lon = Number(stop.coordinates[1]);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+                return;
+            }
+
+            const isPickup = (stop.type || '').toUpperCase() === 'PICKUP';
+            const iconClass = isPickup ? 'pickup-marker marker-pickup' : 'dest-marker marker-dropoff';
+            const markerHtml = `<div class="marker-inner"><div class="marker-label">${index + 1}</div></div>`;
+            const icon = L.divIcon({
+                className: `stop-sequence-marker stop-marker ${iconClass}`,
+                html: markerHtml,
+                iconSize: [30, 36],
+                iconAnchor: [15, 36],
+            });
+
+            const marker = L.marker([lat, lon], { icon }).addTo(window.map);
+            const label = isPickup ? 'Pickup' : 'Drop-off';
+            marker.bindPopup(`${label}<br>${escapeHtml(stop.address || '--')}`);
+
+            itineraryMarkers.push(marker);
+
+            if (!bounds) {
+                bounds = L.latLngBounds([lat, lon], [lat, lon]);
+            } else {
+                bounds.extend([lat, lon]);
+            }
+        });
+
+        itineraryMarkers.forEach(marker => {
+            try {
+                if (marker && typeof marker.setZIndexOffset === 'function') marker.setZIndexOffset(900);
+                if (marker && typeof marker.bringToFront === 'function') marker.bringToFront();
+            } catch (err) { /* ignore */ }
+        });
+
+        if (!bounds) {
+            return null;
+        }
+        if (typeof bounds.isValid === 'function' && !bounds.isValid()) {
+            return null;
+        }
+        return bounds;
+    }
 
     async function loadModalMessages() {
         if (!_chatModalBookingId || !chatModalMessages) return;
@@ -287,20 +448,32 @@
             let riderToDestRouteLayer = null;
             let initialRouteLoadDone = false;
         let currentTrackedBookingId = null;
+        let itineraryMarkers = [];
 
             async function updateAll(bookingId) {
                 const loader = document.getElementById('route-loader');
                 try {
-                    if (!initialRouteLoadDone && loader) { loader.classList.remove('hidden'); loader.setAttribute('aria-hidden', 'false'); }
+                    if (!initialRouteLoadDone && loader) {
+                        loader.classList.remove('hidden');
+                        loader.setAttribute('aria-hidden', 'false');
+                    }
+
                     const infoRes = await fetch(`/api/booking/${bookingId}/route_info/`);
                     if (!infoRes.ok) {
-                        if (!initialRouteLoadDone && loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden', 'true'); }
+                        if (!initialRouteLoadDone && loader) {
+                            loader.classList.add('hidden');
+                            loader.setAttribute('aria-hidden', 'true');
+                        }
                         console.error('Failed to fetch route info:', infoRes.status);
                         return;
                     }
+
                     const info = await infoRes.json();
                     if (info.status !== 'success') {
-                        if (!initialRouteLoadDone && loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden', 'true'); }
+                        if (!initialRouteLoadDone && loader) {
+                            loader.classList.add('hidden');
+                            loader.setAttribute('aria-hidden', 'true');
+                        }
                         console.error('Route info error:', info.message);
                         return;
                     }
@@ -316,159 +489,426 @@
                     const hasPickup = Number.isFinite(pLat) && Number.isFinite(pLon);
                     const hasDest = Number.isFinite(xLat) && Number.isFinite(xLon);
 
-                    // Update markers
                     try {
                         if (hasDriver) {
                             const driverLatLng = [dLat, dLon];
                             if (!driverMarker) {
-                                const driverIcon = L.divIcon({ className: 'driver-marker', html: '<div style="background: #28a745; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [28,28] });
+                                const driverIcon = L.divIcon({ className: 'driver-marker', html: '<div style="background: #28a745; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [28, 28] });
                                 driverMarker = L.marker(driverLatLng, { icon: driverIcon }).addTo(window.map).bindPopup('Driver');
-                            } else { driverMarker.setLatLng(driverLatLng); }
+                            } else {
+                                driverMarker.setLatLng(driverLatLng);
+                            }
                         }
                         if (hasPickup) {
                             const pickupLatLng = [pLat, pLon];
                             if (!pickupMarker) {
-                                const pickupIcon = L.divIcon({ className: 'pickup-marker', html: '<div style="background: #ffc107; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [20,20] });
+                                const pickupIcon = L.divIcon({ className: 'pickup-marker', html: '<div style="background: #ffc107; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [20, 20] });
                                 pickupMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(window.map).bindPopup('Pickup');
-                            } else { pickupMarker.setLatLng(pickupLatLng); }
+                            } else {
+                                pickupMarker.setLatLng(pickupLatLng);
+                            }
                         }
                         if (hasDest) {
                             const destLatLng = [xLat, xLon];
                             if (!destinationMarker) {
-                                const destIcon = L.divIcon({ className: 'dest-marker', html: '<div style="background: #007bff; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [20,20] });
+                                const destIcon = L.divIcon({ className: 'dest-marker', html: '<div style="background: #007bff; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [20, 20] });
                                 destinationMarker = L.marker(destLatLng, { icon: destIcon }).addTo(window.map).bindPopup('Destination');
-                            } else { destinationMarker.setLatLng(destLatLng); }
-                        }
-                    } catch (e) { console.warn('Marker update failed', e); }
-
-                    // Fetch routes when appropriate, but avoid repeated ORS calls if coords unchanged or rate-limited
-                    let dtData = null, rdData = null;
-                    try {
-                        const now = Date.now();
-                        const rateLimited = (_orsRateLimitedUntil && now < _orsRateLimitedUntil);
-                        if (!rateLimited) {
-                            if (hasDriver && hasPickup) {
-                                const driverPickupKey = `${dLat},${dLon}|${pLat},${pLon}`;
-                                if (driverPickupKey !== _prevDriverToPickupCoords) {
-                                    const dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${dLon},${dLat}&end=${pLon},${pLat}`;
-                                    try {
-                                        const dtRes = await fetch(dtUrl);
-                                        if (dtRes.status === 429) { _orsRateLimitedUntil = now + 30000; console.warn('ORS rate limit detected (429)'); }
-                                        else { dtData = await dtRes.json(); _lastDTData = dtData; _prevDriverToPickupCoords = driverPickupKey; }
-                                    } catch(e) { console.warn('Driver->pickup route fetch failed', e); }
-                                } else {
-                                    dtData = _lastDTData;
-                                }
+                            } else {
+                                destinationMarker.setLatLng(destLatLng);
                             }
-
-                            if (hasPickup && hasDest) {
-                                const pickupDestKey = `${pLat},${pLon}|${xLat},${xLon}`;
-                                if (pickupDestKey !== _prevPickupToDestCoords) {
-                                    const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${pLon},${pLat}&end=${xLon},${xLat}`;
-                                    try {
-                                        const rdRes = await fetch(rdUrl);
-                                        if (rdRes.status === 429) { _orsRateLimitedUntil = now + 30000; console.warn('ORS rate limit detected (429)'); }
-                                        else { rdData = await rdRes.json(); _lastRDData = rdData; _prevPickupToDestCoords = pickupDestKey; }
-                                    } catch(e) { console.warn('Pickup->dest route fetch failed', e); }
-                                } else {
-                                    rdData = _lastRDData;
-                                }
-                            }
-                        } else {
-                            console.warn('Skipping ORS calls until', new Date(_orsRateLimitedUntil));
                         }
-                    } catch(e) { console.warn('Route fetch failed', e); }
+                    } catch (e) {
+                        console.warn('Marker update failed', e);
+                    }
 
-                    // Remove old route layers
-                    try { if (driverToRiderRouteLayer) { window.map.removeLayer(driverToRiderRouteLayer); driverToRiderRouteLayer = null; } if (riderToDestRouteLayer) { window.map.removeLayer(riderToDestRouteLayer); riderToDestRouteLayer = null; } } catch(e){}
+                    const routePayload = info.route_payload || null;
+                    const itineraryData = info.itinerary || null;
+                    let itineraryBounds = null;
+                    let itineraryStopBounds = null;
 
-                    try {
-                        if (dtData && dtData.features && dtData.features.length > 0) {
-                            driverToRiderRouteLayer = L.geoJSON(dtData.features[0], { style: { color: '#28a745', weight: 5, opacity: 0.8 } }).addTo(window.map);
-                        }
-                        if (rdData && rdData.features && rdData.features.length > 0) {
-                            riderToDestRouteLayer = L.geoJSON(rdData.features[0], { style: { color: '#007bff', weight: 5, opacity: 0.8 } }).addTo(window.map);
-                        }
-                    } catch(e) { console.warn('Add route failed', e); }
-
-                    // Fit map to show layers if present
-                    try {
-                        const layers = [];
-                        if (driverToRiderRouteLayer) layers.push(driverToRiderRouteLayer);
-                        if (riderToDestRouteLayer) layers.push(riderToDestRouteLayer);
-                        if (layers.length > 0) {
-                            let bounds = layers[0].getBounds(); layers.forEach(l => bounds.extend(l.getBounds())); window.map.fitBounds(bounds, { padding: [50,50] });
-                        }
-                    } catch(e) {}
-
-                    // Update ETA and distance UI
-                    try {
-                        const etaLabel = document.getElementById('eta-label'); const etaValue = document.getElementById('eta-value'); const distanceValue = document.getElementById('distance-value');
-                        let etaMin = null, distKm = null;
-                        if (dtData && dtData.features?.[0]?.properties?.segments?.[0]) {
-                            const seg = dtData.features[0].properties.segments[0]; etaMin = Math.ceil(seg.duration/60); distKm = (seg.distance/1000).toFixed(2); etaLabel.textContent = 'Time to Pick-up:';
-                        } else if (rdData && rdData.features?.[0]?.properties?.segments?.[0]) {
-                            const seg = rdData.features[0].properties.segments[0]; etaMin = Math.ceil(seg.duration/60); distKm = (seg.distance/1000).toFixed(2); etaLabel.textContent = 'Time to Destination:';
-                        }
-                        if (etaMin != null) etaValue.textContent = `${etaMin} min`; if (distKm != null) distanceValue.textContent = `${distKm} km`;
-                        // Also populate the driver-info-card summary fields if present
+                    if (itineraryData) {
                         try {
-                            const cardEta = document.getElementById('card-eta');
-                            const cardPickup = document.getElementById('card-pickup');
-                            const cardDest = document.getElementById('card-dest');
-                            if (cardEta) cardEta.textContent = (etaMin != null) ? `${etaMin} min` : '--';
-                            // Prefer server-provided address; fallback to booking list DOM text; last resort: coords
-                            let pickupAddr = info.pickup_address || null;
-                            let destAddr = info.destination_address || null;
-                            if ((!pickupAddr || !destAddr) && bookingId) {
-                                const bookingEl = document.querySelector(`.booking-item[data-booking-id="${bookingId}"]`);
-                                if (bookingEl) {
-                                    const txt = (bookingEl.textContent || '').trim();
-                                    // booking item text has format: "<pickup> → <destination>"
-                                    const parts = txt.split('→');
-                                    if (!pickupAddr && parts[0]) pickupAddr = parts[0].trim();
-                                    if (!destAddr && parts[1]) destAddr = parts[1].trim();
+                            itineraryBounds = renderItineraryRoute(itineraryData);
+                            itineraryStopBounds = renderItineraryStops(itineraryData);
+                        } catch (e) {
+                            console.warn('Unable to render itinerary route for rider', e);
+                            clearItineraryRouteLayer();
+                            clearItineraryMarkers();
+                        }
+                    } else {
+                        clearItineraryRouteLayer();
+                        clearItineraryMarkers();
+                    }
+
+                    const usingItineraryRoute = Boolean(itineraryBounds);
+                    let dtData = null;
+                    let rdData = null;
+
+                    const driverPickupKey = (hasDriver && hasPickup) ? `${dLat},${dLon}|${pLat},${pLon}` : null;
+                    const pickupDestKey = (hasPickup && hasDest) ? `${pLat},${pLon}|${xLat},${xLon}` : null;
+                    const hasRoutePayloadGeo = !hasDriver && Array.isArray(routePayload?.route_data?.features) && routePayload.route_data.features.length > 0;
+
+                    if (!usingItineraryRoute) {
+                        try {
+                            const now = Date.now();
+                            const rateLimited = (_orsRateLimitedUntil && now < _orsRateLimitedUntil);
+
+                            if (!rateLimited) {
+                                if (driverPickupKey) {
+                                    if (driverPickupKey !== _prevDriverToPickupCoords || !_lastDTData) {
+                                        const dtUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${dLon},${dLat}&end=${pLon},${pLat}`;
+                                        try {
+                                            const dtRes = await fetch(dtUrl);
+                                            if (dtRes.status === 429) {
+                                                _orsRateLimitedUntil = now + 30000;
+                                                console.warn('ORS rate limit detected (429)');
+                                            } else {
+                                                dtData = await dtRes.json();
+                                                _lastDTData = dtData;
+                                                _prevDriverToPickupCoords = driverPickupKey;
+                                            }
+                                        } catch (e) {
+                                            console.warn('Driver->pickup route fetch failed', e);
+                                        }
+                                    } else {
+                                        dtData = _lastDTData;
+                                    }
+                                    if (!dtData) {
+                                        dtData = _lastDTData;
+                                    }
+                                } else {
+                                    _prevDriverToPickupCoords = null;
+                                    dtData = null;
+                                }
+
+                                if (pickupDestKey) {
+                                    const shouldUsePayload = hasRoutePayloadGeo && pickupDestKey !== null;
+                                    if (pickupDestKey !== _prevPickupToDestCoords || !_lastRDData) {
+                                        if (shouldUsePayload) {
+                                            rdData = routePayload.route_data;
+                                            _lastRDData = rdData;
+                                            _prevPickupToDestCoords = pickupDestKey;
+                                        } else {
+                                            const rdUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${pLon},${pLat}&end=${xLon},${xLat}`;
+                                            try {
+                                                const rdRes = await fetch(rdUrl);
+                                                if (rdRes.status === 429) {
+                                                    _orsRateLimitedUntil = now + 30000;
+                                                    console.warn('ORS rate limit detected (429)');
+                                                } else {
+                                                    rdData = await rdRes.json();
+                                                    _lastRDData = rdData;
+                                                    _prevPickupToDestCoords = pickupDestKey;
+                                                }
+                                            } catch (e) {
+                                                console.warn('Pickup->dest route fetch failed', e);
+                                            }
+                                        }
+                                    } else {
+                                        rdData = _lastRDData;
+                                        if (!rdData && shouldUsePayload) {
+                                            rdData = routePayload.route_data;
+                                            _lastRDData = rdData;
+                                        }
+                                    }
+                                    if (!rdData && shouldUsePayload) {
+                                        rdData = routePayload.route_data;
+                                        _lastRDData = rdData;
+                                        _prevPickupToDestCoords = pickupDestKey;
+                                    }
+                                } else {
+                                    _prevPickupToDestCoords = null;
+                                    rdData = null;
+                                }
+                            } else {
+                                console.warn('Skipping ORS calls until', new Date(_orsRateLimitedUntil));
+                                dtData = _lastDTData;
+                                rdData = _lastRDData;
+                                if (hasRoutePayloadGeo && pickupDestKey) {
+                                    rdData = routePayload.route_data;
+                                    _lastRDData = rdData;
+                                    _prevPickupToDestCoords = pickupDestKey;
                                 }
                             }
-                            if (cardPickup) cardPickup.textContent = pickupAddr || (pLat && pLon ? `${pLat.toFixed(5)}, ${pLon.toFixed(5)}` : '--');
-                            if (cardDest) cardDest.textContent = destAddr || (xLat && xLon ? `${xLat.toFixed(5)}, ${xLon.toFixed(5)}` : '--');
-                        } catch(e) { /* non-critical */ }
-                    } catch(e) {}
+                        } catch (e) {
+                            console.warn('Route fetch failed', e);
+                        }
 
-                    // Update driver info card visibility and contents
+                        try {
+                            if (driverToRiderRouteLayer) {
+                                window.map.removeLayer(driverToRiderRouteLayer);
+                            }
+                        } catch (e) { /* ignore */ }
+                        driverToRiderRouteLayer = null;
+
+                        try {
+                            if (riderToDestRouteLayer) {
+                                window.map.removeLayer(riderToDestRouteLayer);
+                            }
+                        } catch (e) { /* ignore */ }
+                        riderToDestRouteLayer = null;
+
+                        try {
+                            const unifiedRouteStyle = { color: '#0b63d6', weight: 5, opacity: 0.88 };
+                            if (dtData?.features?.[0]) {
+                                driverToRiderRouteLayer = L.geoJSON(dtData.features[0], { style: unifiedRouteStyle }).addTo(window.map);
+                            }
+                            if (rdData?.features?.[0]) {
+                                riderToDestRouteLayer = L.geoJSON(rdData.features[0], { style: unifiedRouteStyle }).addTo(window.map);
+                            }
+                        } catch (e) {
+                            console.warn('Add route failed', e);
+                        }
+                    } else {
+                        try {
+                            if (driverToRiderRouteLayer) {
+                                window.map.removeLayer(driverToRiderRouteLayer);
+                            }
+                        } catch (e) { /* ignore */ }
+                        driverToRiderRouteLayer = null;
+
+                        try {
+                            if (riderToDestRouteLayer) {
+                                window.map.removeLayer(riderToDestRouteLayer);
+                            }
+                        } catch (e) { /* ignore */ }
+                        riderToDestRouteLayer = null;
+                    }
+
                     try {
-                        const infoCard = document.getElementById('driver-info-card');
-                        const bookingAccepted = (info.booking_status === 'accepted' || info.booking_status === 'on_the_way' || info.booking_status === 'started');
-                        if (bookingAccepted) {
-                            document.body.classList.add('booking-active');
-                        } else {
-                            document.body.classList.remove('booking-active');
+                        const boundsList = [];
+                        if (itineraryBounds && typeof itineraryBounds.isValid === 'function' && itineraryBounds.isValid()) {
+                            boundsList.push(itineraryBounds);
                         }
-                        if (infoCard) {
-                            const previewCard = document.getElementById('booking-preview-card');
-                            if (bookingAccepted) {
-                                // hide the preview card when a driver has accepted (show driver info instead)
-                                if (previewCard) { previewCard.style.display = 'none'; previewCard.setAttribute('aria-hidden','true'); }
-                                const driverObj = info.driver || null; const tricycle = info.tricycle || {};
-                                const driverName = (driverObj && driverObj.name) ? driverObj.name : (info.driver_name || 'Driver');
-                                const driverPlate = (driverObj && driverObj.plate) ? driverObj.plate : (info.driver_plate || 'AB 1234');
-                                const driverColor = tricycle.color || info.driver_color || 'Red';
-                                infoCard.querySelector('.driver-name').textContent = driverName;
-                                infoCard.querySelector('.driver-plate').textContent = `Plate: ${driverPlate}`;
-                                infoCard.querySelector('.driver-color').textContent = `Color: ${driverColor}`;
-                                infoCard.style.display = 'block'; infoCard.setAttribute('aria-hidden','false');
-                            } else { infoCard.style.display = 'none'; infoCard.setAttribute('aria-hidden','true'); }
-                            // when not accepted, ensure preview card is visible
-                            if (!bookingAccepted && previewCard) { previewCard.style.display = 'block'; previewCard.setAttribute('aria-hidden','false'); }
+                        if (itineraryStopBounds && typeof itineraryStopBounds.isValid === 'function' && itineraryStopBounds.isValid()) {
+                            boundsList.push(itineraryStopBounds);
                         }
-                    } catch(e) { console.warn('Driver card update failed', e); }
+                        if (driverToRiderRouteLayer && typeof driverToRiderRouteLayer.getBounds === 'function') {
+                            const b = driverToRiderRouteLayer.getBounds();
+                            if (b && typeof b.isValid === 'function' && b.isValid()) {
+                                boundsList.push(b);
+                            }
+                        }
+                        if (riderToDestRouteLayer && typeof riderToDestRouteLayer.getBounds === 'function') {
+                            const b = riderToDestRouteLayer.getBounds();
+                            if (b && typeof b.isValid === 'function' && b.isValid()) {
+                                boundsList.push(b);
+                            }
+                        }
+                        if (boundsList.length > 0 && window.map) {
+                            const combined = L.latLngBounds([]);
+                            boundsList.forEach(b => combined.extend(b));
+                            if (combined.isValid()) {
+                                window.map.fitBounds(combined, { padding: [50, 50] });
+                            }
+                        }
+                    } catch (e) { /* ignore */ }
 
-                    // hide loader
-                    try { if (!initialRouteLoadDone) initialRouteLoadDone = true; if (loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden','true'); } } catch(e){}
+                    const pickupAddress = info.pickup_address || null;
+                    const destinationAddress = info.destination_address || null;
+
+                    let pickupDisplay = pickupAddress;
+                    let destinationDisplay = destinationAddress;
+
+                    if ((!pickupDisplay || !destinationDisplay) && bookingId) {
+                        const bookingEl = document.querySelector(`.booking-item[data-booking-id="${bookingId}"]`);
+                        if (bookingEl) {
+                            const txt = (bookingEl.textContent || '').trim();
+                            const parts = txt.split('→');
+                            if (!pickupDisplay && parts[0]) {
+                                pickupDisplay = parts[0].trim();
+                            }
+                            if (!destinationDisplay && parts[1]) {
+                                destinationDisplay = parts[1].trim();
+                            }
+                        }
+                    }
+
+                    if (!pickupDisplay && hasPickup) {
+                        pickupDisplay = `${pLat.toFixed(5)}, ${pLon.toFixed(5)}`;
+                    }
+                    if (!destinationDisplay && hasDest) {
+                        destinationDisplay = `${xLat.toFixed(5)}, ${xLon.toFixed(5)}`;
+                    }
+
+                    if (!pickupDisplay) {
+                        pickupDisplay = '--';
+                    }
+                    if (!destinationDisplay) {
+                        destinationDisplay = '--';
+                    }
+
+                    let etaLabelText = hasDriver ? 'Time to Pick-up:' : 'Time to Destination:';
+                    let etaMinutes = null;
+                    let distanceKmText = null;
+
+                    const dtSegment = dtData?.features?.[0]?.properties?.segments?.[0];
+                    const rdSegment = rdData?.features?.[0]?.properties?.segments?.[0];
+
+                    if (hasDriver) {
+                        if (dtSegment) {
+                            etaMinutes = Math.ceil(dtSegment.duration / 60);
+                            distanceKmText = (dtSegment.distance / 1000).toFixed(2);
+                        } else {
+                            const fallbackMinutes = formatMinutes(info.driver_to_pickup_duration_min);
+                            if (fallbackMinutes != null) {
+                                etaMinutes = fallbackMinutes;
+                            }
+                            const fallbackKm = formatKm(info.driver_to_pickup_km);
+                            if (fallbackKm != null) {
+                                distanceKmText = fallbackKm;
+                            }
+                        }
+                    } else {
+                        if (rdSegment) {
+                            etaMinutes = Math.ceil(rdSegment.duration / 60);
+                            distanceKmText = (rdSegment.distance / 1000).toFixed(2);
+                        } else {
+                            let fallbackMinutes = formatMinutes(info.pickup_to_destination_duration_min);
+                            if (fallbackMinutes == null && routePayload?.duration != null) {
+                                fallbackMinutes = formatMinutes(Number(routePayload.duration) / 60);
+                            }
+                            if (fallbackMinutes == null) {
+                                fallbackMinutes = formatMinutes(info.estimated_duration);
+                            }
+                            if (fallbackMinutes == null && info.estimated_arrival) {
+                                const arrivalTs = Date.parse(info.estimated_arrival);
+                                if (!Number.isNaN(arrivalTs)) {
+                                    const diffMin = Math.round((arrivalTs - Date.now()) / 60000);
+                                    if (Number.isFinite(diffMin)) {
+                                        fallbackMinutes = Math.max(1, diffMin);
+                                    }
+                                }
+                            }
+                            if (fallbackMinutes != null) {
+                                etaMinutes = fallbackMinutes;
+                            }
+                            let fallbackKm = formatKm(info.pickup_to_destination_km);
+                            if (fallbackKm == null && routePayload?.distance != null) {
+                                fallbackKm = formatKm(routePayload.distance);
+                            }
+                            if (fallbackKm != null) {
+                                distanceKmText = fallbackKm;
+                            }
+                        }
+                    }
+
+                    const etaDisplay = etaMinutes != null ? `${etaMinutes} min` : '--';
+                    const distanceDisplay = distanceKmText != null ? `${distanceKmText} km` : '--';
+
+                    const etaLabel = document.getElementById('eta-label');
+                    const etaValue = document.getElementById('eta-value');
+                    const distanceValue = document.getElementById('distance-value');
+                    if (etaLabel) {
+                        etaLabel.textContent = etaLabelText;
+                    }
+                    if (etaValue) {
+                        etaValue.textContent = etaDisplay;
+                    }
+                    if (distanceValue) {
+                        distanceValue.textContent = distanceDisplay;
+                    }
+
+                    const cardEtaEl = document.getElementById('card-eta');
+                    const cardPickupEl = document.getElementById('card-pickup');
+                    const cardDestEl = document.getElementById('card-dest');
+                    if (cardEtaEl) {
+                        cardEtaEl.textContent = etaDisplay;
+                    }
+                    if (cardPickupEl) {
+                        cardPickupEl.textContent = pickupDisplay;
+                    }
+                    if (cardDestEl) {
+                        cardDestEl.textContent = destinationDisplay;
+                    }
+
+                    const previewEtaEl = document.getElementById('preview-eta');
+                    if (previewEtaEl) {
+                        previewEtaEl.textContent = etaDisplay;
+                    }
+                    const previewPickupEl = document.getElementById('preview-pickup');
+                    if (previewPickupEl) {
+                        previewPickupEl.textContent = pickupDisplay;
+                    }
+                    const previewDestEl = document.getElementById('preview-dest');
+                    if (previewDestEl) {
+                        previewDestEl.textContent = destinationDisplay;
+                    }
+
+                    const bookingStatus = (info.booking_status || '').toLowerCase();
+                    const bookingAccepted = ['accepted', 'on_the_way', 'started'].includes(bookingStatus);
+
+                    if (bookingAccepted) {
+                        document.body.classList.add('booking-active');
+                    } else {
+                        document.body.classList.remove('booking-active');
+                    }
+
+                    const infoCard = document.getElementById('driver-info-card');
+                    if (infoCard) {
+                        const previewCard = document.getElementById('booking-preview-card');
+                        if (bookingAccepted) {
+                            if (previewCard) {
+                                previewCard.style.display = 'none';
+                                previewCard.setAttribute('aria-hidden', 'true');
+                            }
+                            const driverObj = info.driver || null;
+                            const tricycle = info.tricycle || {};
+                            const driverName = (driverObj && driverObj.name) ? driverObj.name : (info.driver_name || 'Driver');
+                            const driverPlate = (driverObj && driverObj.plate) ? driverObj.plate : (info.driver_plate || 'AB 1234');
+                            const driverColor = tricycle.color || info.driver_color || 'Red';
+                            infoCard.querySelector('.driver-name').textContent = driverName;
+                            infoCard.querySelector('.driver-plate').textContent = `Plate: ${driverPlate}`;
+                            infoCard.querySelector('.driver-color').textContent = `Color: ${driverColor}`;
+                            const driverFareEl = infoCard.querySelector('.driver-fare');
+                            if (driverFareEl) {
+                                const fareNum = toNumber(info.fare);
+                                if (fareNum != null) {
+                                    driverFareEl.textContent = `Fare: ₱${fareNum.toFixed(2)}`;
+                                } else if (info.fare) {
+                                    driverFareEl.textContent = `Fare: ${info.fare}`;
+                                } else {
+                                    driverFareEl.textContent = 'Fare: --';
+                                }
+                            }
+                            if (cardEtaEl) {
+                                cardEtaEl.textContent = etaDisplay;
+                            }
+                            if (cardPickupEl) {
+                                cardPickupEl.textContent = pickupDisplay;
+                            }
+                            if (cardDestEl) {
+                                cardDestEl.textContent = destinationDisplay;
+                            }
+                            infoCard.style.display = 'block';
+                            infoCard.setAttribute('aria-hidden', 'false');
+                        } else {
+                            infoCard.style.display = 'none';
+                            infoCard.setAttribute('aria-hidden', 'true');
+                            if (previewCard) {
+                                previewCard.style.display = 'block';
+                                previewCard.setAttribute('aria-hidden', 'false');
+                            }
+                        }
+                    }
+
+                    if (!initialRouteLoadDone) {
+                        initialRouteLoadDone = true;
+                    }
+                    if (loader) {
+                        loader.classList.add('hidden');
+                        loader.setAttribute('aria-hidden', 'true');
+                    }
                 } catch (err) {
                     console.error('Tracking error', err);
-                    const indicator = document.getElementById('status-indicator'); if (indicator) { indicator.style.backgroundColor = '#dc3545'; }
-                    const loader = document.getElementById('route-loader'); if (loader) { loader.classList.add('hidden'); loader.setAttribute('aria-hidden','true'); }
+                    const indicator = document.getElementById('status-indicator');
+                    if (indicator) {
+                        indicator.style.backgroundColor = '#dc3545';
+                    }
+                    if (loader) {
+                        loader.classList.add('hidden');
+                        loader.setAttribute('aria-hidden', 'true');
+                    }
                 }
             }
 

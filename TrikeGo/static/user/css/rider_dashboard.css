@@ -315,10 +315,44 @@ body.booking-active #booking-preview-card { display: none !important; }
         }
 
 /* Marker inner styles */
-.driver-marker .marker-inner { background: #28a745; width: 28px; height: 28px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
-.pickup-marker .marker-inner { background: #ffc107; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; }
-.dest-marker .marker-inner { background: #007bff; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; }
-.rider-marker .marker-inner { background: #ffc107; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+.driver-marker .marker-inner { background: #28a745; width: 30px; height: 30px; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.25); }
+.pickup-marker .marker-inner { background: #ffc107; width: 30px; height: 30px; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.25); }
+.dest-marker .marker-inner { background: #0b63d6; width: 30px; height: 30px; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.25); }
+.rider-marker .marker-inner { background: #ffc107; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.25); }
+.stop-marker .marker-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+.stop-marker .marker-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.stop-marker .marker-number {
+  display: block;
+}
+.stop-sequence-marker { background: transparent !important; border: none !important; }
+.stop-sequence-marker .marker-label {
+  background: #0b63d6;
+  color: #fff;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 4px 8px;
+  box-shadow: 0 3px 10px rgba(11, 38, 56, 0.25);
+  font-size: 12px;
+}
+.marker-dropoff .marker-label,
+.stop-sequence-marker.marker-dropoff .marker-label {
+  background: #28a745;
+}
 
 /* Legend */
 .map-legend {
@@ -336,7 +370,7 @@ body.booking-active #booking-preview-card { display: none !important; }
 .map-legend .legend-dot { width: 12px; height: 12px; border-radius: 50%; display:inline-block; border: 1px solid rgba(0,0,0,0.06); }
 .map-legend .legend-dot.driver { background: #28a745; }
 .map-legend .legend-dot.pickup { background: #ffc107; }
-.map-legend .legend-dot.dest { background: #007bff; }
+.map-legend .legend-dot.dest { background: #0b63d6; }
 
 /* Active booking pill (small, visible near the top-left of the map) */
 .active-booking-pill {
