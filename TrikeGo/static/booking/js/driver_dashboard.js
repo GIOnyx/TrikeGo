@@ -539,12 +539,10 @@
                 if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
                 const isPickup = (stop.type || '').toUpperCase() === 'PICKUP';
-                const iconClass = isPickup
-                    ? 'pickup-marker marker-pickup'
-                    : 'dest-marker marker-dropoff';
-                const markerHtml = `<div class="marker-inner"><div class="marker-label">${idx + 1}</div></div>`;
+                const iconClass = isPickup ? 'pickup' : 'dest';
+                const markerHtml = '<div class="marker-inner"><span class="marker-number">' + (idx + 1) + '</span></div>';
                 const icon = L.divIcon({
-                    className: `stop-sequence-marker stop-marker ${iconClass}`,
+                    className: `stop-sequence-marker stop-marker ${iconClass}-marker`,
                     html: markerHtml,
                     iconSize: [30, 36],
                     iconAnchor: [15, 36],
