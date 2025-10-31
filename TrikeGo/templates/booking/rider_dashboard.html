@@ -167,6 +167,7 @@
                 <div class="driver-meta">
                     <div><strong>Pickup:</strong> <span id="preview-pickup">{{ booking.pickup_address }}</span></div>
                     <div><strong>Destination:</strong> <span id="preview-dest">{{ booking.destination_address }}</span></div>
+                    <div><strong>ETA:</strong> <span id="preview-eta">--</span></div>
                 </div>
                 <div class="driver-fare">Estimated Fare: <span id="preview-fare">{% if booking.fare %}₱{{ booking.fare }}{% else %}--{% endif %}</span></div>
             </div>

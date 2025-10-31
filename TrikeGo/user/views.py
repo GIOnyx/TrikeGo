@@ -26,7 +26,12 @@ from decimal import Decimal
 from django.contrib.auth.views import redirect_to_login
 from django.contrib.auth import logout as auth_logout
 from django.views.decorators.csrf import csrf_protect
-from booking.utils import seats_available, pickup_within_detour, ensure_booking_stops
+from booking.utils import (
+    seats_available,
+    pickup_within_detour,
+    ensure_booking_stops,
+    build_driver_itinerary,
+)
 try:
     from booking.tasks import compute_and_cache_route
 except Exception:
@@ -595,6 +600,22 @@ def get_route_info(request, booking_id):
         return redirect_to_login(request.get_full_path())
     booking = get_object_or_404(Booking, id=booking_id)
 
+    def _to_float(value):
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _minutes_from_seconds(value):
+        try:
+            if value is None:
+                return None
+            return round(float(value) / 60.0, 2)
+        except (TypeError, ValueError):
+            return None
+
     # Try to serve a cached route_info payload to reduce repeated ORS calls
     cache_key = f'route_info_{booking_id}'
     try:
@@ -668,6 +689,11 @@ def get_route_info(request, booking_id):
 
     # If there's no driver assigned (rider preview), compute pickup->destination route
     route_payload = None
+    pickup_to_dest_km = None
+    pickup_to_dest_duration_min = None
+    driver_to_pickup_km = None
+    driver_to_pickup_duration_min = None
+
     try:
         if not booking.driver:
             routing_service = RoutingService()
@@ -676,27 +702,19 @@ def get_route_info(request, booking_id):
             end = (float(booking.destination_longitude), float(booking.destination_latitude))
             route_info = routing_service.calculate_route(start, end)
             if route_info:
+                pickup_to_dest_km = route_info.get('distance')
+                pickup_to_dest_duration_min = _minutes_from_seconds(route_info.get('duration'))
                 route_payload = {
                     'route_data': route_info.get('route_data'),
                     'distance': route_info.get('distance'),
                     'duration': route_info.get('duration'),
-                    'too_close': route_info.get('too_close', False)
+                    'too_close': route_info.get('too_close', False),
                 }
-        else:
-            # If a driver exists, the frontend will fetch driver/pickup and pickup/destination as needed
-            route_payload = None
-    except Exception as e:
+    except Exception:
         route_payload = None
-    # Compute distances for convenience to display in the UI
-    pickup_to_dest_km = None
-    driver_to_pickup_km = None
-    if route_payload:
-        try:
-            pickup_to_dest_km = route_payload.get('distance')
-        except Exception:
-            pickup_to_dest_km = None
-    else:
-        # If driver exists and routing can compute, try to compute distances
+
+    # If driver exists and routing can compute, try to compute distances/durations
+    if booking.driver:
         try:
             routing_service = RoutingService()
             if booking.pickup_latitude and booking.pickup_longitude and booking.destination_latitude and booking.destination_longitude:
@@ -704,13 +722,24 @@ def get_route_info(request, booking_id):
                 pd_end = (float(booking.destination_longitude), float(booking.destination_latitude))
                 pd_info = routing_service.calculate_route(pd_start, pd_end)
                 if pd_info:
-                    pickup_to_dest_km = pd_info.get('distance')
-            if booking.driver and driver_profile and driver_profile.current_latitude and driver_profile.current_longitude and booking.pickup_latitude and booking.pickup_longitude:
+                    if pickup_to_dest_km is None:
+                        pickup_to_dest_km = pd_info.get('distance')
+                    if pickup_to_dest_duration_min is None:
+                        pickup_to_dest_duration_min = _minutes_from_seconds(pd_info.get('duration'))
+            if (
+                booking.driver
+                and driver_profile
+                and driver_profile.current_latitude
+                and driver_profile.current_longitude
+                and booking.pickup_latitude
+                and booking.pickup_longitude
+            ):
                 dp_start = (float(driver_profile.current_longitude), float(driver_profile.current_latitude))
                 dp_end = (float(booking.pickup_longitude), float(booking.pickup_latitude))
                 dp_info = routing_service.calculate_route(dp_start, dp_end)
                 if dp_info:
                     driver_to_pickup_km = dp_info.get('distance')
+                    driver_to_pickup_duration_min = _minutes_from_seconds(dp_info.get('duration'))
         except Exception:
             pass
 
@@ -746,23 +775,62 @@ def get_route_info(request, booking_id):
             driver_info['plate'] = tricycle_data.get('plate_number')
             driver_info['color'] = tricycle_data.get('color')
 
+    itinerary_payload = None
+    rider_stop_indexes = None
+    if booking.driver:
+        try:
+            itinerary_result = build_driver_itinerary(booking.driver)
+            itinerary_payload = itinerary_result.get('itinerary')
+            stops = itinerary_payload.get('stops') if itinerary_payload else None
+            if isinstance(stops, list):
+                rider_stop_indexes = {'pickup': None, 'dropoff': None}
+                for idx, stop in enumerate(stops):
+                    if stop.get('bookingId') != booking.id:
+                        continue
+                    stop_type = (stop.get('type') or '').upper()
+                    if stop_type == 'PICKUP' and rider_stop_indexes['pickup'] is None:
+                        rider_stop_indexes['pickup'] = idx
+                    if stop_type == 'DROPOFF' and rider_stop_indexes['dropoff'] is None:
+                        rider_stop_indexes['dropoff'] = idx
+                if all(value is None for value in rider_stop_indexes.values()):
+                    rider_stop_indexes = None
+        except Exception:
+            itinerary_payload = None
+            rider_stop_indexes = None
+
+    pickup_to_dest_km = _to_float(pickup_to_dest_km)
+    driver_to_pickup_km = _to_float(driver_to_pickup_km)
+    fare_value = _to_float(booking.fare)
+    estimated_arrival = booking.estimated_arrival.isoformat() if booking.estimated_arrival else None
+
     response_data = {
         'status': 'success',
+        'booking_id': booking.id,
         'booking_status': booking.status,
+        'booking_status_display': booking.get_status_display(),
         'driver': driver_info,
         'driver_lat': driver_profile.current_latitude if driver_profile else None,
         'driver_lon': driver_profile.current_longitude if driver_profile else None,
         'driver_name': driver_info.get('name') if driver_info else None,
         'rider_lat': rider_profile.current_latitude if rider_profile else None,
         'rider_lon': rider_profile.current_longitude if rider_profile else None,
+        'pickup_address': booking.pickup_address,
         'pickup_lat': booking.pickup_latitude,
         'pickup_lon': booking.pickup_longitude,
+        'destination_address': booking.destination_address,
         'destination_lat': booking.destination_latitude,
         'destination_lon': booking.destination_longitude,
+        'estimated_arrival': estimated_arrival,
+        'estimated_duration': booking.estimated_duration,
+        'fare': fare_value,
         'tricycle': tricycle_data,
         'route_payload': route_payload,
         'pickup_to_destination_km': pickup_to_dest_km,
+        'pickup_to_destination_duration_min': pickup_to_dest_duration_min,
         'driver_to_pickup_km': driver_to_pickup_km,
+        'driver_to_pickup_duration_min': driver_to_pickup_duration_min,
+        'itinerary': itinerary_payload,
+        'rider_stop_indexes': rider_stop_indexes,
     }
 
     # Cache the response briefly to reduce repeated ORS calls from many clients.
