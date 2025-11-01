@@ -457,3 +457,28 @@ body.booking-active #booking-preview-card { display: none !important; }
   top: auto !important;
   z-index: 1200 !important;
 }
+
+.rating-stars {
+    display: inline-block;
+    direction: rtl;
+}
+.rating-stars input[type="radio"] {
+    display: none;
+}
+.rating-stars label {
+    color: #ccc;
+    font-size: 2.5rem;
+    padding: 0 4px;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+.rating-stars label:hover,
+.rating-stars label:hover ~ label {
+    color: #ffc107;
+}
+.rating-stars input[type="radio"]:checked ~ label {
+    color: #ff9800;
+}
+.rating-stars label:before {
+    content: '★';
+}
