@@ -26,7 +26,12 @@ from decimal import Decimal
 from django.contrib.auth.views import redirect_to_login
 from django.contrib.auth import logout as auth_logout
 from django.views.decorators.csrf import csrf_protect
-from booking.utils import seats_available, pickup_within_detour, ensure_booking_stops
+from booking.utils import (
+    seats_available,
+    pickup_within_detour,
+    ensure_booking_stops,
+    build_driver_itinerary,
+)
 try:
     from booking.tasks import compute_and_cache_route
 except Exception:
@@ -318,16 +323,48 @@ def cancel_booking(request, booking_id):
         return redirect('user:landing')
 
     booking = get_object_or_404(Booking, id=booking_id)
+    print(f"[cancel_booking] Booking {booking_id}, Status: {booking.status}, Driver: {booking.driver_id}")
+    
+    active_driver_statuses = {'accepted', 'on_the_way', 'started'}
+    booking_is_active = booking.status in active_driver_statuses
     if booking.rider != request.user:
         messages.error(request, 'Permission denied.')
         return redirect('user:rider_dashboard')
 
-    # Only allow cancelling of pending bookings (rider cannot cancel once trip is accepted/on the way/started)
-    if booking.status == 'pending':
-        booking.status = 'cancelled_by_rider'
-        booking.driver = None
-        booking.start_time = None
-        booking.save()
+    # When rider cancels, revert booking to pending state so it stays in active bookings
+    # but clears any driver assignment. This allows the rider to see the unaccepted booking card.
+    if booking.status in ['pending', 'accepted', 'on_the_way']:
+        old_status = booking.status
+        old_driver_id = booking.driver_id
+        
+        # If already pending with no driver, this is effectively a "delete" request
+        # But we keep it as pending to maintain the booking in the system
+        if booking.status == 'pending' and booking.driver is None:
+            print(f"[cancel_booking] Already pending with no driver, just clearing cache")
+            booking.status = 'cancelled_by_rider'  # Mark as cancelled so it moves to history
+            booking.save()
+        else:
+            print(f"[cancel_booking] Reverting to pending from {old_status}")
+            booking.status = 'pending'
+            booking.driver = None
+            booking.start_time = None
+            booking.save()
+        
+        # Clear route info cache entries
+        from django.core.cache import cache
+        cache_keys = [
+            f'route_info_{booking_id}_{old_status}_{old_driver_id or "none"}',
+            f'route_info_{booking_id}_pending_none',
+            f'route_info_{booking_id}_accepted_{old_driver_id or "none"}',
+            f'route_info_{booking_id}_on_the_way_{old_driver_id or "none"}',
+        ]
+        for key in cache_keys:
+            try:
+                cache.delete(key)
+                print(f"[cancel_booking] Cleared cache: {key}")
+            except Exception as e:
+                print(f"[cancel_booking] Cache delete failed for {key}: {e}")
+        
         messages.success(request, 'Your booking has been cancelled.')
     else:
         messages.error(request, 'This booking cannot be cancelled at this stage.')
@@ -368,6 +405,24 @@ class RiderDashboard(View):
             rider=request.user,
             status__in=['pending', 'accepted', 'on_the_way', 'started']
         )
+        # Ensure fare is available for active bookings when estimates exist.
+        # Some bookings may have been created before fare logic existed, or
+        # without estimates; compute and persist fare when we can so templates
+        # can render it directly as `booking.fare`.
+        try:
+            for _bk in active_bookings:
+                try:
+                    if _bk.fare is None and _bk.estimated_distance is not None and _bk.estimated_duration is not None:
+                        computed = _bk.calculate_fare()
+                        if computed is not None:
+                            # Persist only the fare field to avoid touching other columns
+                            _bk.save(update_fields=['fare'])
+                except Exception as e:
+                    # Non-fatal: do not block dashboard rendering for logging/calculation issues
+                    print(f"RiderDashboard: could not compute fare for booking {_bk.id}: {e}")
+        except Exception:
+            # If iterating the queryset fails for any reason, continue without fares
+            pass
         ride_history = Booking.objects.filter(
             rider=request.user,
             status__in=['completed', 'cancelled_by_rider', 'cancelled_by_driver', 'no_driver_found']
@@ -539,10 +594,15 @@ def update_driver_location(request):
         # Invalidate cached route info for any active booking assigned to this driver
         try:
             from booking.models import Booking as _Booking
-            active_bookings = _Booking.objects.filter(driver=request.user, status__in=['accepted', 'on_the_way', 'started']).values_list('id', flat=True)
-            for bid in active_bookings:
+            active_bookings = _Booking.objects.filter(
+                driver=request.user,
+                status__in=['accepted', 'on_the_way', 'started']
+            ).values('id', 'status', 'driver_id')
+            for entry in active_bookings:
+                bid = entry.get('id')
                 try:
                     cache.delete(f'route_info_{bid}')
+                    cache.delete(f"route_info_{bid}_{entry.get('status')}_{entry.get('driver_id') or 'none'}")
                 except Exception:
                     pass
         except Exception:
@@ -596,7 +656,7 @@ def get_route_info(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id)
 
     # Try to serve a cached route_info payload to reduce repeated ORS calls
-    cache_key = f'route_info_{booking_id}'
+    cache_key = f'route_info_{booking_id}_{booking.status}_{booking.driver_id or "none"}'
     try:
         cached = cache.get(cache_key)
         if cached:
@@ -606,6 +666,11 @@ def get_route_info(request, booking_id):
         cached = None
     
     # Allow: drivers to preview using their own current location; riders to view for their own booking
+    
+    # Define booking_is_active first to determine if driver info should be exposed
+    accepted_statuses = {'accepted', 'on_the_way', 'started'}
+    booking_is_active = booking.status in accepted_statuses
+    
     if request.user.trikego_user == 'D':
         try:
             driver_profile = Driver.objects.get(user=request.user)
@@ -625,7 +690,7 @@ def get_route_info(request, booking_id):
             return JsonResponse({'status': 'error', 'message': 'Rider profile not found.'}, status=404)
 
         driver_profile = None
-        if booking.driver:
+        if booking_is_active and booking.driver:
             try:
                 driver_profile = Driver.objects.get(user=booking.driver)
             except Driver.DoesNotExist:
@@ -669,7 +734,7 @@ def get_route_info(request, booking_id):
     # If there's no driver assigned (rider preview), compute pickup->destination route
     route_payload = None
     try:
-        if not booking.driver:
+        if not booking_is_active or not booking.driver:
             routing_service = RoutingService()
             # Calculate route from pickup to destination (coords expected as lon,lat)
             start = (float(booking.pickup_longitude), float(booking.pickup_latitude))
@@ -746,23 +811,101 @@ def get_route_info(request, booking_id):
             driver_info['plate'] = tricycle_data.get('plate_number')
             driver_info['color'] = tricycle_data.get('color')
 
+    # Build stop payload (pickup/dropoff and any subsequent itinerary points) so the
+    # rider map can render numbered markers matching the driver's itinerary.
+    stops_payload = []
+    try:
+        ensure_booking_stops(booking)
+        booking_stops = booking.stops.order_by('sequence', 'created_at')
+        for idx, stop in enumerate(booking_stops, start=1):
+            lat_val = None
+            lon_val = None
+            try:
+                if stop.latitude is not None and stop.longitude is not None:
+                    lat_val = float(stop.latitude)
+                    lon_val = float(stop.longitude)
+            except Exception:
+                lat_val = None
+                lon_val = None
+
+            stops_payload.append({
+                'sequence': idx,
+                'type': stop.stop_type,
+                'status': stop.status,
+                'address': stop.address,
+                'lat': lat_val,
+                'lon': lon_val,
+                'passenger_count': stop.passenger_count,
+                'label': 'Pickup' if stop.stop_type == 'PICKUP' else 'Drop-off',
+                'booking_id': stop.booking_id,
+            })
+    except Exception:
+        stops_payload = []
+
+    shared_itinerary = None
+    if booking_is_active and booking.driver and driver_profile:
+        try:
+            itinerary_result = build_driver_itinerary(booking.driver)
+            if isinstance(itinerary_result, dict):
+                shared_itinerary = itinerary_result.get('itinerary')
+        except Exception:
+            shared_itinerary = None
+
+    fare_amount = None
+    fare_display = None
+    if booking.fare is not None:
+        try:
+            fare_amount = float(booking.fare)
+        except (TypeError, ValueError, OverflowError):
+            try:
+                fare_amount = float(Decimal(str(booking.fare)))
+            except Exception:
+                fare_amount = None
+        if fare_amount is not None:
+            fare_display = f"₱{booking.fare}"
+
+    estimated_distance_val = None
+    if booking.estimated_distance is not None:
+        try:
+            estimated_distance_val = float(booking.estimated_distance)
+        except (TypeError, ValueError, OverflowError):
+            estimated_distance_val = None
+
+    estimated_duration_val = booking.estimated_duration if booking.estimated_duration is not None else None
+
+    estimated_arrival_iso = None
+    if booking.estimated_arrival is not None:
+        try:
+            estimated_arrival_iso = booking.estimated_arrival.isoformat()
+        except Exception:
+            estimated_arrival_iso = None
+
     response_data = {
         'status': 'success',
         'booking_status': booking.status,
-        'driver': driver_info,
-        'driver_lat': driver_profile.current_latitude if driver_profile else None,
-        'driver_lon': driver_profile.current_longitude if driver_profile else None,
-        'driver_name': driver_info.get('name') if driver_info else None,
+        'driver': driver_info if booking_is_active else None,
+        'driver_lat': driver_profile.current_latitude if (booking_is_active and driver_profile) else None,
+        'driver_lon': driver_profile.current_longitude if (booking_is_active and driver_profile) else None,
+        'driver_name': driver_info.get('name') if (booking_is_active and driver_info) else None,
         'rider_lat': rider_profile.current_latitude if rider_profile else None,
         'rider_lon': rider_profile.current_longitude if rider_profile else None,
+        'pickup_address': booking.pickup_address,
         'pickup_lat': booking.pickup_latitude,
         'pickup_lon': booking.pickup_longitude,
+        'destination_address': booking.destination_address,
         'destination_lat': booking.destination_latitude,
         'destination_lon': booking.destination_longitude,
+        'estimated_arrival': estimated_arrival_iso,
+        'estimated_distance_km': estimated_distance_val,
+        'estimated_duration_min': estimated_duration_val,
+        'fare': fare_amount,
+        'fare_display': fare_display,
         'tricycle': tricycle_data,
         'route_payload': route_payload,
         'pickup_to_destination_km': pickup_to_dest_km,
         'driver_to_pickup_km': driver_to_pickup_km,
+        'stops': stops_payload,
+        'itinerary': shared_itinerary,
     }
 
     # Cache the response briefly to reduce repeated ORS calls from many clients.

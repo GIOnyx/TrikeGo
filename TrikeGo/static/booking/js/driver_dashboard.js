@@ -129,6 +129,7 @@
             fullBookingCount: document.getElementById('full-booking-count'),
             fullCapacity: document.getElementById('full-capacity'),
             fullEarnings: document.getElementById('full-earnings'),
+            bookingsContainer: document.getElementById('itinerary-bookings'),
             stopList: document.getElementById('itinerary-stop-list'),
             summaryContainer: document.getElementById('itinerary-summary'),
             fullContainer: document.getElementById('itinerary-full'),
@@ -235,6 +236,7 @@
             const statusClass = stop.status ? stop.status.toLowerCase() : 'upcoming';
             const statusLabel = formatStatusLabel(stop.status);
             const passengerLabel = stop.passengerCount === 1 ? '1 passenger' : `${stop.passengerCount} passengers`;
+            const fareText = stop.bookingFareDisplay || (Number.isFinite(stop.bookingFare) ? `₱${Number(stop.bookingFare).toFixed(2)}` : null);
 
             li.innerHTML = `
                 <div class="stop-header">
@@ -246,6 +248,7 @@
                 </div>
                 <div class="stop-meta">${escapeHtml(stop.address || '--')}</div>
                 <div class="stop-meta">${escapeHtml(passengerLabel)}</div>
+                ${stop.isFirstForBooking && fareText ? `<div class="stop-meta">Fare: ${escapeHtml(fareText)}</div>` : ''}
                 ${stop.note ? `<div class="stop-note">${escapeHtml(stop.note)}</div>` : ''}
             `;
 
@@ -253,6 +256,93 @@
         });
 
         itineraryDom.stopList.appendChild(fragment);
+    }
+
+    function renderBookingSummaries(bookings) {
+        if (!itineraryDom.bookingsContainer) return;
+        itineraryDom.bookingsContainer.innerHTML = '';
+
+        const list = Array.isArray(bookings) ? bookings : [];
+        if (!list.length) {
+            const empty = document.createElement('p');
+            empty.className = 'booking-summary-empty';
+            empty.textContent = 'No active bookings.';
+            itineraryDom.bookingsContainer.appendChild(empty);
+            return;
+        }
+
+        const heading = document.createElement('h4');
+        heading.textContent = 'Active Bookings';
+        itineraryDom.bookingsContainer.appendChild(heading);
+
+        const ul = document.createElement('ul');
+        ul.className = 'booking-summary-list';
+
+        list.forEach(booking => {
+            const li = document.createElement('li');
+            li.className = 'booking-summary-item';
+
+            const riderName = booking.riderName || 'Passenger';
+            const passengerCount = Number(booking.passengers) || 1;
+            const seatsLabel = passengerCount === 1 ? '1 seat' : `${passengerCount} seats`;
+            const statusText = booking.status ? booking.status.replace(/_/g, ' ').toUpperCase() : '';
+            const fareText = booking.fareDisplay || (Number.isFinite(booking.fare) ? `₱${Number(booking.fare).toFixed(2)}` : '--');
+            const bookingId = booking.bookingId || '';
+
+            li.innerHTML = `
+                <div style="flex:1;">
+                    <strong>Booking #${escapeHtml(String(bookingId))}</strong>
+                    <div class="meta">${escapeHtml(riderName)} • ${escapeHtml(seatsLabel)}${statusText ? ` • ${escapeHtml(statusText)}` : ''}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+                    <div class="fare">${escapeHtml(fareText)}</div>
+                    <button class="btn btn-sm btn-danger cancel-booking-btn" data-booking-id="${escapeHtml(String(bookingId))}" style="font-size:11px;padding:4px 8px;">Cancel</button>
+                </div>
+            `;
+
+            ul.appendChild(li);
+        });
+
+        itineraryDom.bookingsContainer.appendChild(ul);
+        
+        // Wire up cancel buttons
+        const cancelButtons = itineraryDom.bookingsContainer.querySelectorAll('.cancel-booking-btn');
+        cancelButtons.forEach(btn => {
+            btn.addEventListener('click', async function(e) {
+                e.preventDefault();
+                const bookingId = this.getAttribute('data-booking-id');
+                if (!bookingId || !confirm(`Cancel booking #${bookingId}?`)) return;
+                
+                try {
+                    this.disabled = true;
+                    this.textContent = 'Cancelling...';
+                    
+                    const response = await fetch(`/booking/${bookingId}/cancel/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': cfg.csrfToken || getCookie('csrftoken'),
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'same-origin'
+                    });
+                    
+                    if (response.ok) {
+                        alert('Booking cancelled successfully');
+                        fetchItineraryData(); // Refresh the itinerary
+                    } else {
+                        const errorText = await response.text();
+                        alert(`Failed to cancel: ${errorText}`);
+                        this.disabled = false;
+                        this.textContent = 'Cancel';
+                    }
+                } catch (err) {
+                    console.error('Cancel booking error:', err);
+                    alert('Failed to cancel booking');
+                    this.disabled = false;
+                    this.textContent = 'Cancel';
+                }
+            });
+        });
     }
 
     function buildItineraryRoutePoints(itinerary) {
@@ -619,6 +709,7 @@
                 itineraryDom.chatBtn.removeAttribute('data-chat-booking-id');
             }
             renderStopList([]);
+            renderBookingSummaries([]);
             clearItineraryMapLayers();
             return;
         }
@@ -632,7 +723,7 @@
             itineraryDom.summaryActionBtn.textContent = 'Start';
             itineraryDom.summaryActionBtn.removeAttribute('data-stop-id');
             if (itineraryDom.fullBookingCount) itineraryDom.fullBookingCount.textContent = '0';
-            if (itineraryDom.fullCapacity) itineraryDom.fullCapacity.textContent = `${itineraryData.currentCapacity || 0} / ${itineraryData.maxCapacity || 0}`;
+            if (itineraryDom.fullCapacity) itineraryDom.fullCapacity.textContent = `${itineraryData.totalPassengers || 0} / ${itineraryData.maxCapacity || 0}`;
             if (itineraryDom.fullEarnings) itineraryDom.fullEarnings.textContent = (itineraryData.totalEarnings || 0).toFixed(2);
             if (itineraryDom.summaryStopNum) itineraryDom.summaryStopNum.textContent = '0';
             if (itineraryDom.summaryStopTotal) itineraryDom.summaryStopTotal.textContent = '0';
@@ -641,6 +732,7 @@
                 itineraryDom.chatBtn.removeAttribute('data-chat-booking-id');
             }
             renderStopList([]);
+            renderBookingSummaries([]);
             clearItineraryMapLayers();
             return;
         }
@@ -662,7 +754,7 @@
         if (itineraryDom.summaryStopTotal) itineraryDom.summaryStopTotal.textContent = String(stops.length);
 
         if (itineraryDom.fullBookingCount) itineraryDom.fullBookingCount.textContent = String(itineraryData.totalBookings || 0);
-        if (itineraryDom.fullCapacity) itineraryDom.fullCapacity.textContent = `${itineraryData.currentCapacity || 0} / ${itineraryData.maxCapacity || 0}`;
+        if (itineraryDom.fullCapacity) itineraryDom.fullCapacity.textContent = `${itineraryData.totalPassengers || 0} / ${itineraryData.maxCapacity || 0}`;
         if (itineraryDom.fullEarnings) itineraryDom.fullEarnings.textContent = (itineraryData.totalEarnings || 0).toFixed(2);
 
         if (itineraryDom.chatBtn) {
@@ -677,6 +769,7 @@
         }
 
         renderStopList(stops);
+        renderBookingSummaries(itineraryData.bookingSummaries);
         renderItineraryMap(itineraryData);
     }
 
@@ -985,6 +1078,14 @@
 
                 fetch(`/api/booking/${bookingId}/route_info/`).then(r => r.json()).then(async (info) => {
                     if (!info || info.status !== 'success') { console.log('route_info returned', info); if (routeDetails) routeDetails.textContent = 'No route info available.'; return; }
+                    
+                    console.log('[Driver Dashboard Review] Route info received:', {
+                        driver_lat: info.driver_lat,
+                        driver_lon: info.driver_lon,
+                        booking_status: info.booking_status,
+                        driver: info.driver
+                    });
+                    
                     // Draw pickup->destination route for review
                     const pLat = Number(info.pickup_lat); const pLon = Number(info.pickup_lon); const xLat = Number(info.destination_lat); const xLon = Number(info.destination_lon);
                     if (!(Number.isFinite(pLat) && Number.isFinite(pLon) && Number.isFinite(xLat) && Number.isFinite(xLon))) {
@@ -1011,8 +1112,9 @@
 
                             // Additionally, draw driver -> pickup route if driver coords exist so drivers can see how far they must travel
                             try {
-                                const dLat = Number(info.driver_lat); const dLon = Number(info.driver_lon);
-                                if (Number.isFinite(dLat) && Number.isFinite(dLon) && Number.isFinite(pLat) && Number.isFinite(pLon)) {
+                                const dLat = (info.driver_lat != null) ? Number(info.driver_lat) : null;
+                                const dLon = (info.driver_lon != null) ? Number(info.driver_lon) : null;
+                                if (dLat != null && dLon != null && Number.isFinite(dLat) && Number.isFinite(dLon) && Number.isFinite(pLat) && Number.isFinite(pLon)) {
                                     const dpUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${dLon},${dLat}&end=${pLon},${pLat}`;
                                     try {
                                         const dpRes = await fetch(dpUrl);
@@ -1036,8 +1138,9 @@
                             const markersToBounds = [];
                             try {
                                 // driver location if available
-                                const dLat = Number(info.driver_lat); const dLon = Number(info.driver_lon);
-                                if (Number.isFinite(dLat) && Number.isFinite(dLon)) {
+                                const dLat = (info.driver_lat != null) ? Number(info.driver_lat) : null;
+                                const dLon = (info.driver_lon != null) ? Number(info.driver_lon) : null;
+                                if (dLat != null && dLon != null && Number.isFinite(dLat) && Number.isFinite(dLon)) {
                                     const driverIcon = L.divIcon({ className: 'driver-marker', html: '<div class="marker-inner"></div>', iconSize: [28,28] });
                                     window._driverReviewDriverMarker = L.marker([dLat, dLon], { icon: driverIcon }).addTo(window.DRIVER_MAP).bindPopup('Driver');
                                     markersToBounds.push(window._driverReviewDriverMarker.getLatLng());

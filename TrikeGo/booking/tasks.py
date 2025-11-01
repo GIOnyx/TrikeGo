@@ -44,7 +44,8 @@ def compute_and_cache_route(booking_id):
                     'duration': route_info.get('duration')
                 }
             }
-            cache.set(f'route_info_{booking_id}', payload, timeout=int(os.environ.get('ROUTE_CACHE_TTL', 15)))
+            cache_key = f'route_info_{booking_id}_{booking.status}_{booking.driver_id or "none"}'
+            cache.set(cache_key, payload, timeout=int(os.environ.get('ROUTE_CACHE_TTL', 15)))
             return True
     except Booking.DoesNotExist:
         return False

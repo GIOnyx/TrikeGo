@@ -1,21 +1,26 @@
 from typing import Dict, List, Optional, Tuple
 
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils import timezone
 
-try:
-    from fare_estimation.distance import calculate_distance
-except ModuleNotFoundError:
-    import math
+import math
 
-    def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        """Fallback haversine calculation in kilometers."""
-        radius = 6371.0
-        ph1, ph2 = math.radians(lat1), math.radians(lat2)
-        d_phi = math.radians(lat2 - lat1)
-        d_lambda = math.radians(lon2 - lon1)
-        a = math.sin(d_phi / 2) ** 2 + math.cos(ph1) * math.cos(ph2) * math.sin(d_lambda / 2) ** 2
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-        return radius * c
+
+def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Haversine distance between two points in kilometers.
+
+    Parameters are latitude and longitude in decimal degrees: (lat1, lon1, lat2, lon2).
+    Returns distance in kilometers as a float.
+    """
+    # Earth radius in kilometers
+    radius = 6371.0
+    ph1 = math.radians(lat1)
+    ph2 = math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+    a = math.sin(d_phi / 2) ** 2 + math.cos(ph1) * math.cos(ph2) * math.sin(d_lambda / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return radius * c
 
 from .models import Booking, BookingStop, DriverLocation
 from .services import RoutingService
@@ -305,7 +310,11 @@ def _build_route_polyline(
 
 
 def plan_driver_stops(driver_user) -> List[BookingStop]:
-    """Generate an ordered list of stops for the driver's active bookings."""
+    """
+    Generate an optimized ordered list of stops for the driver's active bookings.
+    Uses a greedy algorithm that considers complete trips (pickup + dropoff together)
+    to minimize total travel distance.
+    """
     stops = list(
         BookingStop.objects.filter(
             booking__driver=driver_user,
@@ -326,7 +335,7 @@ def plan_driver_stops(driver_user) -> List[BookingStop]:
 
     order: List[BookingStop] = ordered_completed.copy()
 
-    # Prepare lookup for pickup completion to gate drop-offs
+    # Track which pickups have been completed
     completed_pickups = {
         stop.booking_id
         for stop in ordered_completed
@@ -339,53 +348,126 @@ def plan_driver_stops(driver_user) -> List[BookingStop]:
         if coord:
             current_location = coord
 
-    pending_work = pending.copy()
-    while pending_work:
+    # Group pending stops by booking
+    pending_by_booking = {}
+    for stop in pending:
+        if stop.booking_id not in pending_by_booking:
+            pending_by_booking[stop.booking_id] = {'pickup': None, 'dropoff': None}
+        if stop.stop_type == 'PICKUP':
+            pending_by_booking[stop.booking_id]['pickup'] = stop
+        else:
+            pending_by_booking[stop.booking_id]['dropoff'] = stop
+
+    # Separate bookings that still need pickup vs those already picked up
+    needs_pickup = []
+    needs_dropoff_only = []
+    
+    for booking_id, pair in pending_by_booking.items():
+        if booking_id in completed_pickups:
+            # Already picked up, just need dropoff
+            if pair['dropoff']:
+                needs_dropoff_only.append(pair['dropoff'])
+        else:
+            # Still needs pickup
+            if pair['pickup']:
+                needs_pickup.append(pair)
+
+    # Optimize route using greedy nearest-neighbor with trip completion preference
+    pending_work = needs_pickup.copy()
+    pending_dropoffs = needs_dropoff_only.copy()
+
+    while pending_work or pending_dropoffs:
         candidates = []
-        for stop in pending_work:
-            if stop.stop_type == 'DROPOFF' and stop.booking_id not in completed_pickups:
+        
+        # For bookings we haven't picked up yet, consider the full trip cost
+        for pair in pending_work:
+            pickup = pair['pickup']
+            dropoff = pair['dropoff']
+            if pickup is None:
                 continue
-            candidates.append(stop)
-
+                
+            pickup_coord = _stop_coordinates(pickup)
+            if pickup_coord is None:
+                continue
+            
+            # Calculate: current -> pickup -> dropoff
+            if current_location:
+                dist_to_pickup = calculate_distance(
+                    current_location[0], current_location[1],
+                    pickup_coord[0], pickup_coord[1]
+                )
+            else:
+                dist_to_pickup = 0
+            
+            # If we have a dropoff, include its distance too
+            if dropoff:
+                dropoff_coord = _stop_coordinates(dropoff)
+                if dropoff_coord:
+                    dist_pickup_to_dropoff = calculate_distance(
+                        pickup_coord[0], pickup_coord[1],
+                        dropoff_coord[0], dropoff_coord[1]
+                    )
+                    # Prefer completing full trips
+                    total_cost = dist_to_pickup + (dist_pickup_to_dropoff * 0.5)
+                else:
+                    total_cost = dist_to_pickup
+            else:
+                total_cost = dist_to_pickup
+            
+            candidates.append(('pickup_pair', pair, total_cost, pickup_coord))
+        
+        # Also consider dropoffs for already-picked-up passengers
+        for dropoff in pending_dropoffs:
+            dropoff_coord = _stop_coordinates(dropoff)
+            if dropoff_coord is None:
+                continue
+            
+            if current_location:
+                dist = calculate_distance(
+                    current_location[0], current_location[1],
+                    dropoff_coord[0], dropoff_coord[1]
+                )
+            else:
+                dist = 0
+            
+            # Prioritize dropoffs (passengers already in vehicle)
+            candidates.append(('dropoff', dropoff, dist * 0.8, dropoff_coord))
+        
         if not candidates:
-            candidates = pending_work.copy()
+            # No valid candidates with coordinates, just add remaining stops
+            for pair in pending_work:
+                if pair['pickup']:
+                    order.append(pair['pickup'])
+                    if pair['dropoff']:
+                        order.append(pair['dropoff'])
+            for dropoff in pending_dropoffs:
+                order.append(dropoff)
+            break
+        
+        # Pick the best candidate (lowest cost)
+        candidates.sort(key=lambda x: x[2])
+        best_type, best_item, best_cost, best_coord = candidates[0]
+        
+        if best_type == 'pickup_pair':
+            # Add pickup, then immediately add its dropoff if available
+            pair = best_item
+            order.append(pair['pickup'])
+            completed_pickups.add(pair['pickup'].booking_id)
+            
+            if pair['dropoff']:
+                order.append(pair['dropoff'])
+                pending_dropoffs = [d for d in pending_dropoffs if d.id != pair['dropoff'].id]
+            
+            pending_work.remove(pair)
+            current_location = _stop_coordinates(pair['dropoff']) if pair['dropoff'] else _stop_coordinates(pair['pickup'])
+        else:
+            # Add dropoff
+            dropoff = best_item
+            order.append(dropoff)
+            pending_dropoffs.remove(dropoff)
+            current_location = best_coord
 
-        best_stop = None
-        best_distance = None
-
-        for stop in candidates:
-            coord = _stop_coordinates(stop)
-            if coord is None:
-                # Prefer stops with coordinates missing last to avoid blocking others
-                if best_stop is None:
-                    best_stop = stop
-                    best_distance = None
-                continue
-
-            if current_location is None:
-                best_stop = stop
-                best_distance = 0
-                break
-
-            dist = calculate_distance(current_location[0], current_location[1], coord[0], coord[1])
-            if best_distance is None or dist < best_distance:
-                best_distance = dist
-                best_stop = stop
-
-        if best_stop is None:
-            best_stop = pending_work[0]
-
-        order.append(best_stop)
-        pending_work.remove(best_stop)
-
-        if best_stop.stop_type == 'PICKUP':
-            completed_pickups.add(best_stop.booking_id)
-
-        coord = _stop_coordinates(best_stop)
-        if coord:
-            current_location = coord
-
-    # Update sequences and statuses (current/upcoming)
+    # Update sequences and statuses
     first_incomplete_found = False
     for idx, stop in enumerate(order, start=1):
         updates = []
@@ -408,25 +490,41 @@ def plan_driver_stops(driver_user) -> List[BookingStop]:
 
 
 def compute_current_capacity(stops: List[BookingStop]) -> int:
+    """
+    Compute the current passenger load in the vehicle.
+    This is the number of passengers currently in the tricycle after all COMPLETED stops.
+    """
     capacity = 0
-    pickups_completed = set()
-    dropoffs_completed = set()
-
+    
     for stop in stops:
-        if stop.stop_type == 'PICKUP' and stop.status == 'COMPLETED':
-            pickups_completed.add(stop.booking_id)
-            capacity += stop.passenger_count
-        if stop.stop_type == 'DROPOFF' and stop.status == 'COMPLETED':
-            dropoffs_completed.add(stop.booking_id)
-            capacity = max(capacity - stop.passenger_count, 0)
+        if stop.status == 'COMPLETED':
+            if stop.stop_type == 'PICKUP':
+                # Passenger got in
+                capacity += stop.passenger_count
+            elif stop.stop_type == 'DROPOFF':
+                # Passenger got out
+                capacity = max(capacity - stop.passenger_count, 0)
+    
+    return capacity
 
-    # Any bookings with pickup completed but dropoff pending contribute to current load
-    active_booking_ids = pickups_completed - dropoffs_completed
-    total = 0
-    for stop in stops:
-        if stop.booking_id in active_booking_ids and stop.stop_type == 'PICKUP':
-            total += stop.passenger_count
-    return total
+
+def _safe_decimal(value) -> Optional[Decimal]:
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
+def _format_currency(value: Optional[Decimal]) -> Optional[str]:
+    if value is None:
+        return None
+    try:
+        quantized = value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        return f"₱{quantized}"
+    except (InvalidOperation, TypeError, ValueError):
+        return None
 
 
 def build_driver_itinerary(driver_user) -> Dict[str, object]:
@@ -450,22 +548,44 @@ def build_driver_itinerary(driver_user) -> Dict[str, object]:
         }
 
     bookings = {stop.booking_id: stop.booking for stop in ordered_stops}
-    unique_booking_ids = list(bookings.keys())
+    unique_booking_ids = []
+    for stop in ordered_stops:
+        if stop.booking_id not in unique_booking_ids:
+            unique_booking_ids.append(stop.booking_id)
 
     driver_profile = Driver.objects.filter(user=driver_user).first()
     trike = Tricycle.objects.filter(driver=driver_profile).first() if driver_profile else None
     max_capacity = int(getattr(trike, 'max_capacity', 1) or 1) if trike else 1
 
-    total_earnings = 0.0
-    for booking in bookings.values():
-        if booking.fare:
-            total_earnings += float(booking.fare)
+    total_earnings = Decimal('0.00')
+    booking_fares: Dict[int, Optional[Decimal]] = {}
+    booking_passengers: Dict[int, int] = {}
+    total_passengers = 0  # Total passengers across all bookings
+
+    for booking_id, booking in bookings.items():
+        fare_decimal = _safe_decimal(getattr(booking, 'fare', None))
+        booking_fares[booking_id] = fare_decimal
+        if fare_decimal is not None:
+            total_earnings += fare_decimal
+
+        passenger_total = 0
+        for stop in ordered_stops:
+            if stop.booking_id == booking_id and stop.stop_type == 'PICKUP':
+                passenger_total += int(getattr(stop, 'passenger_count', 1) or 1)
+        passenger_count = passenger_total or int(getattr(booking, 'passengers', 1) or 1)
+        booking_passengers[booking_id] = passenger_count
+        total_passengers += passenger_count
 
     current_capacity = compute_current_capacity(ordered_stops)
 
     current_stop_index = None
     stops_payload: List[Dict[str, object]] = []
+    first_stop_seen: Dict[int, bool] = {}
     for idx, stop in enumerate(ordered_stops, start=1):
+        is_first_for_booking = not first_stop_seen.get(stop.booking_id, False)
+        if is_first_for_booking:
+            first_stop_seen[stop.booking_id] = True
+
         payload = {
             'stopId': str(stop.stop_uid),
             'type': stop.stop_type,
@@ -476,10 +596,23 @@ def build_driver_itinerary(driver_user) -> Dict[str, object]:
             'note': stop.note,
             'bookingId': stop.booking_id,
             'sequence': idx,
+            'bookingStatus': stop.booking.status,
+            'isFirstForBooking': is_first_for_booking,
         }
         coord = _stop_coordinates(stop)
         if coord:
             payload['coordinates'] = [coord[0], coord[1]]
+        fare_decimal = booking_fares.get(stop.booking_id)
+        if fare_decimal is not None:
+            try:
+                quantized = fare_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                payload['bookingFare'] = float(quantized)
+                fare_display = _format_currency(quantized)
+            except (InvalidOperation, TypeError, ValueError):
+                payload['bookingFare'] = float(round(float(fare_decimal), 2))
+                fare_display = _format_currency(fare_decimal)
+            if fare_display:
+                payload['bookingFareDisplay'] = fare_display
         if stop.status == 'CURRENT' and current_stop_index is None:
             current_stop_index = idx - 1
         stops_payload.append(payload)
@@ -491,17 +624,37 @@ def build_driver_itinerary(driver_user) -> Dict[str, object]:
     start_coord = _driver_start_location(driver_user)
     polyline, has_precise_route, segment_routes = _build_route_polyline(start_coord, ordered_stops)
 
+    booking_summaries: List[Dict[str, object]] = []
+    for booking_id in unique_booking_ids:
+        booking = bookings.get(booking_id)
+        fare_decimal = booking_fares.get(booking_id)
+        try:
+            quantized = fare_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if fare_decimal is not None else None
+        except (InvalidOperation, TypeError, ValueError):
+            quantized = None
+        fare_display = _format_currency(quantized or fare_decimal)
+        booking_summaries.append({
+            'bookingId': booking_id,
+            'status': booking.status,
+            'riderName': booking.rider.get_full_name() or booking.rider.username,
+            'fare': float(quantized) if quantized is not None else (float(fare_decimal) if fare_decimal is not None else None),
+            'fareDisplay': fare_display,
+            'passengers': booking_passengers.get(booking_id, int(getattr(booking, 'passengers', 1) or 1)),
+        })
+
     itinerary = {
-        'totalEarnings': round(total_earnings, 2),
+        'totalEarnings': float(total_earnings.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)) if total_earnings is not None else 0.0,
         'totalBookings': len(unique_booking_ids),
         'maxCapacity': max_capacity,
         'currentCapacity': current_capacity,
+        'totalPassengers': total_passengers,  # Total passengers across all accepted bookings
         'stops': stops_payload,
         'currentStopIndex': current_stop_index,
         'fullRoutePolyline': polyline,
         'fullRouteIsPrecise': has_precise_route,
         'fullRouteSegments': segment_routes,
         'driverStartCoordinate': [start_coord[0], start_coord[1]] if start_coord else None,
+        'bookingSummaries': booking_summaries,
     }
 
     return {

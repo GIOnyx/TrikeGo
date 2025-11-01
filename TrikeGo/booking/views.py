@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse, HttpResponseForbidden
 from django.utils import timezone
+from django.core.cache import cache
 from .forms import BookingForm
 from .models import Booking
 from user.models import CustomUser
@@ -43,14 +44,37 @@ def booking_detail(request, booking_id):
 def cancel_booking(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id)
 
-    # Security check: only the rider can cancel their own booking
-    if request.user != booking.rider:
+    # Allow both riders and drivers to cancel
+    if request.user != booking.rider and request.user != booking.driver:
         return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
 
-    if booking.status in ['pending', 'accepted']:
-        booking.status = 'cancelled_by_rider'
-        booking.end_time = timezone.now()
+    if booking.status in ['pending', 'accepted', 'on_the_way']:
+        old_status = booking.status
+        old_driver_id = booking.driver_id
+        
+        if request.user == booking.rider:
+            # When rider cancels, just revert to pending and clear driver assignment
+            booking.status = 'pending'
+            booking.driver = None
+        elif request.user == booking.driver:
+            # When driver cancels, revert to pending so another driver can accept
+            booking.status = 'pending'
+            booking.driver = None
         booking.save()
+        
+        # Clear all possible cache entries for this booking
+        cache_keys = [
+            f'route_info_{booking_id}_{old_status}_{old_driver_id or "none"}',
+            f'route_info_{booking_id}_pending_none',
+            f'route_info_{booking_id}_accepted_{old_driver_id or "none"}',
+            f'route_info_{booking_id}_on_the_way_{old_driver_id or "none"}',
+        ]
+        for key in cache_keys:
+            try:
+                cache.delete(key)
+            except Exception:
+                pass
+        
         return JsonResponse({'status': 'success', 'message': 'Booking cancelled successfully.'})
     else:
         return JsonResponse({'status': 'error', 'message': 'This booking can no longer be cancelled.'}, status=400)

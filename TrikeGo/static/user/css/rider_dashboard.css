@@ -316,8 +316,10 @@ body.booking-active #booking-preview-card { display: none !important; }
 
 /* Marker inner styles */
 .driver-marker .marker-inner { background: #28a745; width: 28px; height: 28px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
-.pickup-marker .marker-inner { background: #ffc107; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; }
-.dest-marker .marker-inner { background: #007bff; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; }
+.stop-marker .marker-inner { display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:12px; line-height:1; box-shadow:0 2px 6px rgba(0,0,0,0.25); }
+.stop-marker .marker-number { display:block; }
+.pickup-marker .marker-inner { background: #ffc107; width: 30px; height: 30px; border-radius: 50%; border: 2px solid white; }
+.dest-marker .marker-inner { background: #007bff; width: 30px; height: 30px; border-radius: 50%; border: 2px solid white; }
 .rider-marker .marker-inner { background: #ffc107; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
 
 /* Legend */

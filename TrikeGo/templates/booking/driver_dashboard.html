@@ -135,6 +135,8 @@
                     <span>Earnings: ₱<span id="full-earnings">0.00</span></span>
                 </div>
 
+                <div class="itinerary-bookings" id="itinerary-bookings" aria-live="polite"></div>
+
                 <ul id="itinerary-stop-list" class="stop-list"></ul>
             </div>
         </div>
@@ -151,7 +153,7 @@
             completeStopEndpoint: '{% url "booking:complete_itinerary_stop" %}'
         };
     </script>
-    <script src="{% static 'booking/js/driver_dashboard.js' %}?v=2"></script>
+    <script src="{% static 'booking/js/driver_dashboard.js' %}?v=8"></script>
 
 </body>
 </html>

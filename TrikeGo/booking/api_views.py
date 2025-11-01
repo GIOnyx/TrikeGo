@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from .models import DriverLocation, Booking, RouteSnapshot, BookingStop
 from .services import RoutingService
-from .utils import build_driver_itinerary, ensure_booking_stops, plan_driver_stops
+from .utils import build_driver_itinerary, ensure_booking_stops, plan_driver_stops, calculate_distance
 from user.models import Driver, Rider
 
 
@@ -218,6 +218,33 @@ def complete_itinerary_stop(request):
 
     if stop.status == 'COMPLETED':
         return Response({'status': 'success', 'message': 'Stop already completed.', 'itinerary': build_driver_itinerary(request.user)['itinerary']})
+
+    # Check if driver is within 10 meters of the stop location
+    try:
+        driver_profile = Driver.objects.get(user=request.user)
+        driver_lat = driver_profile.current_latitude
+        driver_lon = driver_profile.current_longitude
+        stop_lat = stop.latitude
+        stop_lon = stop.longitude
+        
+        if driver_lat and driver_lon and stop_lat and stop_lon:
+            distance_km = calculate_distance(
+                float(driver_lat), float(driver_lon),
+                float(stop_lat), float(stop_lon)
+            )
+            distance_meters = distance_km * 1000
+            
+            if distance_meters > 10:
+                return Response({
+                    'error': f'You must be within 10 meters of the {stop.stop_type.lower()} location. You are currently {distance_meters:.1f}m away.',
+                    'distance': distance_meters,
+                    'required': 10
+                }, status=status.HTTP_400_BAD_REQUEST)
+    except Driver.DoesNotExist:
+        pass  # If driver profile doesn't exist, skip proximity check
+    except Exception as e:
+        print(f"Proximity check error: {e}")
+        pass  # Don't block on proximity check errors
 
     stop.status = 'COMPLETED'
     stop.completed_at = timezone.now()

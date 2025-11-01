@@ -280,13 +280,90 @@
     });
             // Booking / tracking variables and helpers
         let trackingInterval = null;
-            let driverMarker = null;
-            let pickupMarker = null;
-            let destinationMarker = null;
-            let driverToRiderRouteLayer = null;
-            let riderToDestRouteLayer = null;
-            let initialRouteLoadDone = false;
+    let driverMarker = null;
+    let pickupMarker = null;
+    let destinationMarker = null;
+    let itineraryRouteLayer = null;
+    let itineraryRouteSignature = null;
+    let fallbackRouteLayer = null;
+        let initialRouteLoadDone = false;
+        let stopMarkers = [];
         let currentTrackedBookingId = null;
+
+        function clearItineraryRouteLayer() {
+            if (itineraryRouteLayer && window.map) {
+                try { window.map.removeLayer(itineraryRouteLayer); } catch (err) { /* ignore */ }
+            }
+            itineraryRouteLayer = null;
+            itineraryRouteSignature = null;
+        }
+
+        function clearFallbackRouteLayer() {
+            if (fallbackRouteLayer && window.map) {
+                try { window.map.removeLayer(fallbackRouteLayer); } catch (err) { /* ignore */ }
+            }
+            fallbackRouteLayer = null;
+        }
+
+        function renderSharedItineraryRoute(itinerary) {
+            if (!window.map || !itinerary) {
+                clearItineraryRouteLayer();
+                return null;
+            }
+
+            const signatureSource = Array.isArray(itinerary.fullRouteSegments) && itinerary.fullRouteSegments.length
+                ? itinerary.fullRouteSegments
+                : itinerary.fullRoutePolyline;
+            const signature = JSON.stringify(signatureSource || []);
+
+            if (itineraryRouteLayer && itineraryRouteSignature === signature) {
+                if (!window.map.hasLayer(itineraryRouteLayer)) {
+                    itineraryRouteLayer.addTo(window.map);
+                }
+                return typeof itineraryRouteLayer.getBounds === 'function' ? itineraryRouteLayer.getBounds() : null;
+            }
+
+            clearItineraryRouteLayer();
+
+            const segments = Array.isArray(itinerary.fullRouteSegments) ? itinerary.fullRouteSegments : [];
+            const segmentLayers = [];
+            segments.forEach(segment => {
+                const rawPoints = Array.isArray(segment?.points) ? segment.points : [];
+                const coords = rawPoints.map(pt => {
+                    if (!Array.isArray(pt) || pt.length < 2) return null;
+                    const lat = Number(pt[0]);
+                    const lon = Number(pt[1]);
+                    return (Number.isFinite(lat) && Number.isFinite(lon)) ? [lat, lon] : null;
+                }).filter(Boolean);
+                if (coords.length >= 2) {
+                    segmentLayers.push(L.polyline(coords, { color: '#0b63d6', weight: 5, opacity: 0.9 }));
+                }
+            });
+
+            if (!segmentLayers.length) {
+                const fallbackPoints = Array.isArray(itinerary.fullRoutePolyline) ? itinerary.fullRoutePolyline : [];
+                const coords = fallbackPoints.map(pt => {
+                    if (!Array.isArray(pt) || pt.length < 2) return null;
+                    const lat = Number(pt[0]);
+                    const lon = Number(pt[1]);
+                    return (Number.isFinite(lat) && Number.isFinite(lon)) ? [lat, lon] : null;
+                }).filter(Boolean);
+                if (coords.length >= 2) {
+                    segmentLayers.push(L.polyline(coords, { color: '#0b63d6', weight: 5, opacity: 0.88 }));
+                }
+            }
+
+            if (!segmentLayers.length) {
+                itineraryRouteLayer = null;
+                itineraryRouteSignature = null;
+                return null;
+            }
+
+            const featureGroup = L.featureGroup(segmentLayers).addTo(window.map);
+            itineraryRouteLayer = featureGroup;
+            itineraryRouteSignature = signature;
+            return typeof featureGroup.getBounds === 'function' ? featureGroup.getBounds() : null;
+        }
 
             async function updateAll(bookingId) {
                 const loader = document.getElementById('route-loader');
@@ -305,41 +382,186 @@
                         return;
                     }
 
-                    const dLat = Number(info.driver_lat);
-                    const dLon = Number(info.driver_lon);
+                    const dLat = (info.driver_lat != null) ? Number(info.driver_lat) : null;
+                    const dLon = (info.driver_lon != null) ? Number(info.driver_lon) : null;
                     const pLat = Number(info.pickup_lat);
                     const pLon = Number(info.pickup_lon);
                     const xLat = Number(info.destination_lat);
                     const xLon = Number(info.destination_lon);
 
-                    const hasDriver = Number.isFinite(dLat) && Number.isFinite(dLon);
+                    console.log('[Rider Dashboard] Driver coordinates:', { 
+                        driver_lat: info.driver_lat, 
+                        driver_lon: info.driver_lon, 
+                        dLat, 
+                        dLon,
+                        booking_status: info.booking_status 
+                    });
+
+                    const hasDriver = (dLat != null && dLon != null && Number.isFinite(dLat) && Number.isFinite(dLon));
                     const hasPickup = Number.isFinite(pLat) && Number.isFinite(pLon);
                     const hasDest = Number.isFinite(xLat) && Number.isFinite(xLon);
+                    const itineraryPayload = info && typeof info.itinerary === 'object' ? info.itinerary : null;
+                    const stopsSource = itineraryPayload && Array.isArray(itineraryPayload.stops) ? itineraryPayload.stops : null;
+                    const stopsList = Array.isArray(stopsSource) && stopsSource.length ? stopsSource : (Array.isArray(info.stops) ? info.stops : []);
+                    const hasStops = stopsList.length > 0;
+                    const hasSharedItinerary = Boolean(itineraryPayload && hasStops);
 
-                    // Update markers
+                    // Update fare display in active and preview cards
+                    let appliedFareText = '--';
                     try {
+                        let fareNumeric = null;
+                        if (typeof info.fare === 'number') {
+                            fareNumeric = info.fare;
+                        } else if (info.fare != null) {
+                            const parsedFare = Number(info.fare);
+                            if (Number.isFinite(parsedFare)) {
+                                fareNumeric = parsedFare;
+                            }
+                        }
+
+                        let fareText = (typeof info.fare_display === 'string' && info.fare_display.trim() !== '') ? info.fare_display : null;
+                        if (!fareText) {
+                            fareText = Number.isFinite(fareNumeric) ? `₱${fareNumeric.toFixed(2)}` : '--';
+                        }
+
+                        if (fareText && fareText !== '--') {
+                            appliedFareText = fareText;
+                        }
+                        
+                        console.log('[Rider Dashboard] Fare data:', { 
+                            fare: info.fare, 
+                            fare_display: info.fare_display, 
+                            fareNumeric, 
+                            fareText, 
+                            appliedFareText 
+                        });
+
+                        ['active-card-fare', 'preview-fare'].forEach((id) => {
+                            const el = document.getElementById(id);
+                            if (el) {
+                                el.textContent = appliedFareText;
+                                console.log(`[Rider Dashboard] Updated #${id} to:`, appliedFareText);
+                            }
+                        });
+                    } catch (e) {
+                        console.warn('Fare display update failed', e);
+                    }
+
+                    // Update markers (driver + numbered stops or fallback pickup/destination markers)
+                    const boundsPoints = [];
+
+                    try {
+                        if (!window.map) {
+                            throw new Error('Map not initialised');
+                        }
+
+                        // Always clear previously rendered stop markers
+                        if (stopMarkers.length) {
+                            stopMarkers.forEach(marker => {
+                                try { window.map.removeLayer(marker); } catch (err) { /* ignore */ }
+                            });
+                            stopMarkers = [];
+                        }
+
                         if (hasDriver) {
                             const driverLatLng = [dLat, dLon];
                             if (!driverMarker) {
                                 const driverIcon = L.divIcon({ className: 'driver-marker', html: '<div style="background: #28a745; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [28,28] });
                                 driverMarker = L.marker(driverLatLng, { icon: driverIcon }).addTo(window.map).bindPopup('Driver');
-                            } else { driverMarker.setLatLng(driverLatLng); }
+                            } else {
+                                driverMarker.setLatLng(driverLatLng);
+                            }
+                            boundsPoints.push(driverLatLng);
+                        } else if (driverMarker) {
+                            try { window.map.removeLayer(driverMarker); } catch (err) { /* ignore */ }
+                            driverMarker = null;
                         }
-                        if (hasPickup) {
-                            const pickupLatLng = [pLat, pLon];
-                            if (!pickupMarker) {
-                                const pickupIcon = L.divIcon({ className: 'pickup-marker', html: '<div style="background: #ffc107; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [20,20] });
-                                pickupMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(window.map).bindPopup('Pickup');
-                            } else { pickupMarker.setLatLng(pickupLatLng); }
-                        }
-                        if (hasDest) {
-                            const destLatLng = [xLat, xLon];
-                            if (!destinationMarker) {
-                                const destIcon = L.divIcon({ className: 'dest-marker', html: '<div style="background: #007bff; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [20,20] });
-                                destinationMarker = L.marker(destLatLng, { icon: destIcon }).addTo(window.map).bindPopup('Destination');
-                            } else { destinationMarker.setLatLng(destLatLng); }
+
+                        if (hasStops) {
+                            if (pickupMarker) { try { window.map.removeLayer(pickupMarker); } catch (err) { /* ignore */ } pickupMarker = null; }
+                            if (destinationMarker) { try { window.map.removeLayer(destinationMarker); } catch (err) { /* ignore */ } destinationMarker = null; }
+
+                            stopsList.forEach((stop, idx) => {
+                                const rawLat = stop.lat ?? stop.latitude ?? (Array.isArray(stop.coordinates) ? stop.coordinates[0] : null);
+                                const rawLon = stop.lon ?? stop.longitude ?? (Array.isArray(stop.coordinates) ? stop.coordinates[1] : null);
+                                const latNum = Number(rawLat);
+                                const lonNum = Number(rawLon);
+                                if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) {
+                                    return;
+                                }
+
+                                let sequenceNumber = Number(stop.sequence);
+                                if (!Number.isFinite(sequenceNumber) || sequenceNumber <= 0) {
+                                    sequenceNumber = idx + 1;
+                                }
+
+                                const typeKey = (stop.type || '').toUpperCase();
+                                const iconClass = typeKey === 'PICKUP' ? 'pickup-marker' : 'dest-marker';
+                                const markerHtml = `<div class="marker-inner"><span class="marker-number">${sequenceNumber}</span></div>`;
+                                const stopIcon = L.divIcon({ className: `stop-marker ${iconClass}`, html: markerHtml, iconSize: [32, 36], iconAnchor: [16, 36] });
+
+                                const marker = L.marker([latNum, lonNum], { icon: stopIcon }).addTo(window.map);
+                                try { if (typeof marker.setZIndexOffset === 'function') marker.setZIndexOffset(800 + (stopsList.length - idx)); } catch (e) { /* ignore */ }
+
+                                const labelParts = [];
+                                const defaultLabel = typeKey === 'PICKUP' ? 'Pickup' : (typeKey === 'DROPOFF' ? 'Drop-off' : 'Stop');
+                                labelParts.push(defaultLabel);
+                                if (stop.bookingId) { labelParts.push(`Booking #${escapeHtml(String(stop.bookingId))}`); }
+                                if (stop.address) { labelParts.push(escapeHtml(String(stop.address))); }
+                                const pax = Number(stop.passengerCount);
+                                if (Number.isFinite(pax) && pax > 0) {
+                                    labelParts.push(`${pax} passenger${pax === 1 ? '' : 's'}`);
+                                }
+                                const fareText = stop.bookingFareDisplay || (Number.isFinite(stop.bookingFare) ? `₱${Number(stop.bookingFare).toFixed(2)}` : null);
+                                if (stop.isFirstForBooking && fareText) {
+                                    labelParts.push(`Fare: ${escapeHtml(fareText)}`);
+                                }
+                                marker.bindPopup(labelParts.join('<br>') || `Stop ${sequenceNumber}`);
+                                stopMarkers.push(marker);
+                                boundsPoints.push([latNum, lonNum]);
+                            });
+                        } else {
+                            if (pickupMarker && !hasPickup) { try { window.map.removeLayer(pickupMarker); } catch (err) { /* ignore */ } pickupMarker = null; }
+                            if (destinationMarker && !hasDest) { try { window.map.removeLayer(destinationMarker); } catch (err) { /* ignore */ } destinationMarker = null; }
+
+                            if (hasPickup) {
+                                const pickupLatLng = [pLat, pLon];
+                                if (!pickupMarker) {
+                                    const pickupIcon = L.divIcon({ className: 'pickup-marker', html: '<div style="background: #ffc107; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [20,20] });
+                                    pickupMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(window.map).bindPopup('Pickup');
+                                } else {
+                                    pickupMarker.setLatLng(pickupLatLng);
+                                }
+                                boundsPoints.push(pickupLatLng);
+                            }
+                            if (hasDest) {
+                                const destLatLng = [xLat, xLon];
+                                if (!destinationMarker) {
+                                    const destIcon = L.divIcon({ className: 'dest-marker', html: '<div style="background: #007bff; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>', iconSize: [20,20] });
+                                    destinationMarker = L.marker(destLatLng, { icon: destIcon }).addTo(window.map).bindPopup('Destination');
+                                } else {
+                                    destinationMarker.setLatLng(destLatLng);
+                                }
+                                boundsPoints.push(destLatLng);
+                            }
                         }
                     } catch (e) { console.warn('Marker update failed', e); }
+
+                    let sharedRouteBounds = null;
+                    let sharedRouteActive = false;
+                    if (hasSharedItinerary) {
+                        try {
+                            sharedRouteBounds = renderSharedItineraryRoute(itineraryPayload);
+                            sharedRouteActive = Boolean(itineraryRouteLayer);
+                            if (sharedRouteActive) {
+                                clearFallbackRouteLayer();
+                            }
+                        } catch (routeErr) {
+                            console.warn('Shared route render failed', routeErr);
+                        }
+                    } else {
+                        clearItineraryRouteLayer();
+                    }
 
                     // Fetch routes when appropriate, but avoid repeated ORS calls if coords unchanged or rate-limited
                     let dtData = null, rdData = null;
@@ -379,25 +601,44 @@
                         }
                     } catch(e) { console.warn('Route fetch failed', e); }
 
-                    // Remove old route layers
-                    try { if (driverToRiderRouteLayer) { window.map.removeLayer(driverToRiderRouteLayer); driverToRiderRouteLayer = null; } if (riderToDestRouteLayer) { window.map.removeLayer(riderToDestRouteLayer); riderToDestRouteLayer = null; } } catch(e){}
-
-                    try {
-                        if (dtData && dtData.features && dtData.features.length > 0) {
-                            driverToRiderRouteLayer = L.geoJSON(dtData.features[0], { style: { color: '#28a745', weight: 5, opacity: 0.8 } }).addTo(window.map);
-                        }
-                        if (rdData && rdData.features && rdData.features.length > 0) {
-                            riderToDestRouteLayer = L.geoJSON(rdData.features[0], { style: { color: '#007bff', weight: 5, opacity: 0.8 } }).addTo(window.map);
-                        }
-                    } catch(e) { console.warn('Add route failed', e); }
+                    const allowFallbackRoute = !sharedRouteActive;
+                    if (allowFallbackRoute) {
+                        clearFallbackRouteLayer();
+                        const routeLayers = [];
+                        try {
+                            if (dtData && dtData.features && dtData.features.length > 0) {
+                                routeLayers.push(L.geoJSON(dtData.features[0], { style: { color: '#0b63d6', weight: 5, opacity: 0.85 } }));
+                            }
+                            if (rdData && rdData.features && rdData.features.length > 0) {
+                                routeLayers.push(L.geoJSON(rdData.features[0], { style: { color: '#0b63d6', weight: 5, opacity: 0.85 } }));
+                            }
+                            if (routeLayers.length > 0) {
+                                fallbackRouteLayer = L.featureGroup(routeLayers).addTo(window.map);
+                            }
+                        } catch(e) { console.warn('Add fallback route failed', e); }
+                    }
 
                     // Fit map to show layers if present
                     try {
-                        const layers = [];
-                        if (driverToRiderRouteLayer) layers.push(driverToRiderRouteLayer);
-                        if (riderToDestRouteLayer) layers.push(riderToDestRouteLayer);
-                        if (layers.length > 0) {
-                            let bounds = layers[0].getBounds(); layers.forEach(l => bounds.extend(l.getBounds())); window.map.fitBounds(bounds, { padding: [50,50] });
+                        let bounds = null;
+                        if (sharedRouteBounds && typeof sharedRouteBounds.isValid === 'function' ? sharedRouteBounds.isValid() : sharedRouteBounds) {
+                            bounds = sharedRouteBounds.clone ? sharedRouteBounds.clone() : sharedRouteBounds;
+                        } else if (!sharedRouteBounds && fallbackRouteLayer && typeof fallbackRouteLayer.getBounds === 'function') {
+                            bounds = fallbackRouteLayer.getBounds();
+                        }
+
+                        boundsPoints.forEach(([lat, lon]) => {
+                            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+                            const point = L.latLng(lat, lon);
+                            if (!bounds) {
+                                bounds = L.latLngBounds(point, point);
+                            } else {
+                                bounds.extend(point);
+                            }
+                        });
+
+                        if (bounds && (typeof bounds.isValid !== 'function' || bounds.isValid())) {
+                            window.map.fitBounds(bounds, { padding: [50,50], maxZoom: 17 });
                         }
                     } catch(e) {}
 
@@ -410,7 +651,27 @@
                         } else if (rdData && rdData.features?.[0]?.properties?.segments?.[0]) {
                             const seg = rdData.features[0].properties.segments[0]; etaMin = Math.ceil(seg.duration/60); distKm = (seg.distance/1000).toFixed(2); etaLabel.textContent = 'Time to Destination:';
                         }
-                        if (etaMin != null) etaValue.textContent = `${etaMin} min`; if (distKm != null) distanceValue.textContent = `${distKm} km`;
+                        if (etaMin == null) {
+                            const fallbackEta = Number(info.estimated_duration_min);
+                            if (Number.isFinite(fallbackEta)) {
+                                etaMin = Math.max(0, Math.round(fallbackEta));
+                            }
+                        }
+                        if (distKm == null) {
+                            const fallbackDist = Number(info.pickup_to_destination_km ?? info.estimated_distance_km);
+                            if (Number.isFinite(fallbackDist)) {
+                                distKm = fallbackDist.toFixed(2);
+                            }
+                        }
+                        if (etaMin != null) {
+                            etaValue.textContent = `${etaMin} min`;
+                            if (etaLabel && (!etaLabel.textContent || !etaLabel.textContent.trim())) {
+                                etaLabel.textContent = 'Estimated Travel Time:';
+                            }
+                        }
+                        if (distKm != null) {
+                            distanceValue.textContent = `${distKm} km`;
+                        }
                         // Also populate the driver-info-card summary fields if present
                         try {
                             const cardEta = document.getElementById('card-eta');
@@ -456,6 +717,10 @@
                                 infoCard.querySelector('.driver-name').textContent = driverName;
                                 infoCard.querySelector('.driver-plate').textContent = `Plate: ${driverPlate}`;
                                 infoCard.querySelector('.driver-color').textContent = `Color: ${driverColor}`;
+                                const fareTarget = document.getElementById('active-card-fare');
+                                if (fareTarget) {
+                                    fareTarget.textContent = appliedFareText;
+                                }
                                 infoCard.style.display = 'block'; infoCard.setAttribute('aria-hidden','false');
                             } else { infoCard.style.display = 'none'; infoCard.setAttribute('aria-hidden','true'); }
                             // when not accepted, ensure preview card is visible

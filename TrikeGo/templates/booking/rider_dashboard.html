@@ -122,18 +122,12 @@
                     <span class="driver-plate">Plate: -</span>
                     <span class="driver-color">Color: -</span>
                 </div>
-                    {% if active_bookings and active_bookings|length > 0 %}
-                    {% with booking=active_bookings.0 %}
                 <div class="driver-fare">
                     Estimated Fare: 
                     <span id="active-card-fare">
                         {% if booking.fare %}₱{{ booking.fare }}{% else %}--{% endif %}
                     </span>
                 </div>
-                {% endwith %}
-                {% else %}
-                <div class="driver-fare">Fare: <span id="active-card-fare">--</span></div>
-                {% endif %}
 
                 <!-- Extra info: ETA, pickup and destination shown in the card -->
                 <div class="driver-info-extra">
@@ -212,7 +206,7 @@
         // Cancel URL template: contains /0/ which will be replaced with the real booking id by the static JS
         window.RIDER_DASH_CONFIG.cancelBookingUrlTemplate = "{% url 'user:cancel_booking' 0 %}";
     </script>
-    <script src="{% static 'booking/js/rider_dashboard.js' %}?v=1"></script>
+    <script src="{% static 'booking/js/rider_dashboard.js' %}?v=6"></script>
 
 </body>
 </html>
