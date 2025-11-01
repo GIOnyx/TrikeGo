@@ -32,6 +32,9 @@ from booking.utils import (
     ensure_booking_stops,
     build_driver_itinerary,
 )
+from booking.forms import RatingForm
+from booking.models import RatingAndFeedback
+
 try:
     from booking.tasks import compute_and_cache_route
 except Exception:
@@ -396,7 +399,7 @@ def complete_booking(request, booking_id):
         booking.save()
         # Reset statuses
         Driver.objects.filter(user=request.user).update(status='Online')
-        Rider.objects.filter(user=booking.rider).update(status='Available')
+        
         messages.success(request, "Booking marked as completed!")
     else:
         messages.error(request, "Cannot complete this booking.")
@@ -439,13 +442,28 @@ class RiderDashboard(View):
             status__in=['completed', 'cancelled_by_rider', 'cancelled_by_driver', 'no_driver_found']
         ).order_by('-booking_time')
 
+        unrated_booking = Booking.objects.filter(
+            rider=request.user,
+            status='completed'
+        ).exclude(
+            # Exclude trips that already have a related rating object
+            rating__isnull=False 
+        ).order_by('-end_time').first()
+        
+        rating_form = None
+        if unrated_booking:
+            rating_form = form or RatingForm()
+
         return {
             'user': request.user,
             'rider_profile': profile,
             'active_bookings': active_bookings,
             'ride_history': ride_history,
             'settings': settings,
-            'booking_form': booking_form
+            'booking_form': booking_form,
+
+            'unrated_booking': unrated_booking, 
+            'rating_form': rating_form,
         }
 
     def get(self, request):
@@ -949,4 +967,72 @@ def get_driver_active_booking(request):
             'status': 'success',
             'booking_id': None
         })
+
+@login_required
+def rate_booking(request, booking_id):
+    if request.user.trikego_user != 'R':
+        return redirect('user:landing')
+
+    booking = get_object_or_404(Booking, id=booking_id, rider=request.user)
+
+    # 1. Check if the trip is completed
+    if booking.status != 'completed':
+        messages.error(request, "This trip is not yet complete or eligible for rating.")
+        return redirect('user:rider_dashboard')
+    
+    # 2. Check if already rated
+    if hasattr(booking, 'rating'):
+        messages.info(request, "You have already rated this trip.")
+        return redirect('user:rider_dashboard')
+
+    if request.method == 'POST':
+        form = RatingForm(request.POST)
+        if form.is_valid():
+            rating = form.save(commit=False)
+            rating.booking = booking
+            rating.rater = request.user
+            rating.rated_user = booking.driver # The driver being rated
+            rating.save()
+
+            Rider.objects.filter(user=booking.rider).update(status='Available')
+            
+            messages.success(request, "Thank you! Your rating has been saved.")
+            return redirect('user:rider_dashboard')
+    else:
+        form = RatingForm()
+
+    context = {
+        'booking': booking,
+        'driver': booking.driver,
+        'form': form
+    }
+    return render(request, 'booking/rate_booking.html', context)
+
+@login_required
+@require_POST
+def submit_rating_ajax(request, booking_id):
+    if request.user.trikego_user != 'R':
+        return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
+
+    booking = get_object_or_404(Booking, id=booking_id, rider=request.user, status='completed')
+    
+    # Check if already rated before processing
+    if hasattr(booking, 'rating'):
+        return JsonResponse({'status': 'info', 'message': 'Already rated.'}, status=200)
+
+    form = RatingForm(request.POST)
+    if form.is_valid():
+        rating = form.save(commit=False)
+        rating.booking = booking
+        rating.rater = request.user
+        rating.rated_user = booking.driver
+        rating.save()
+        
+        # Reset Rider status to available after rating is submitted
+        Rider.objects.filter(user=booking.rider).update(status='Available')
+
+        return JsonResponse({'status': 'success', 'message': 'Thank you! Rating saved.'})
+    
+    # If form is invalid, return errors
+    return JsonResponse({'status': 'error', 'errors': form.errors.as_json()}, status=400)
 
