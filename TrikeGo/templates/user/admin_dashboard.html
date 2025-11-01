@@ -5,12 +5,20 @@
 <head>
   <meta charset="UTF-8">
   <title>Admin Dashboard - TrikeGo</title>
-  <link rel="stylesheet" href="{% static 'user/css/admin_dashboard.css' %}?=v2">
+  <link rel="stylesheet" href="{% static 'user/css/admin_dashboard.css' %}?=v3">
 </head>
 <body>
   <header class="admin-header">
-    <h1>Admin Dashboard</h1>
-    <p>Welcome, {{ request.user.username }}</p>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <h1>Admin Dashboard</h1>
+        <p>Welcome, {{ request.user.username }}</p>
+      </div>
+      <form method="post" action="{% url 'user:logout' %}" style="margin: 0;">
+        {% csrf_token %}
+        <button type="submit" class="logout-btn">Logout</button>
+      </form>
+    </div>
   </header>
 
   {% if messages %}
@@ -33,6 +41,7 @@
             <th>Phone</th>
             <th>License No.</th>
             <th>License Image URL</th>
+            <th>Tricycle Info</th>
             <th>Status</th>
             <th>Verified</th>
             <th>Actions</th>
@@ -52,6 +61,29 @@
                 —
               {% endif %}
             </td>
+            <td>
+              {% with tricycle=driver.tricycles.first %}
+                {% if tricycle %}
+                  <strong>Plate:</strong> {{ tricycle.plate_number }}<br>
+                  <strong>Color:</strong> {{ tricycle.color }}<br>
+                  <strong>Capacity:</strong> {{ tricycle.max_capacity }}<br>
+                  {% if tricycle.image_url %}
+                    <a href="{{ tricycle.image_url }}" target="_blank">Tricycle Photo</a><br>
+                  {% endif %}
+                  {% if tricycle.or_image_url %}
+                    <a href="{{ tricycle.or_image_url }}" target="_blank">OR Document</a><br>
+                  {% endif %}
+                  {% if tricycle.cr_image_url %}
+                    <a href="{{ tricycle.cr_image_url }}" target="_blank">CR Document</a><br>
+                  {% endif %}
+                  {% if tricycle.mtop_image_url %}
+                    <a href="{{ tricycle.mtop_image_url }}" target="_blank">MTOP Document</a>
+                  {% endif %}
+                {% else %}
+                  <em>No tricycle registered</em>
+                {% endif %}
+              {% endwith %}
+            </td>
             <td>{{ driver.status }}</td>
             <td>{{ driver.is_verified|yesno:"Yes,No" }}</td>
             <td>
@@ -64,7 +96,7 @@
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="8">No drivers found.</td></tr>
+          <tr><td colspan="9">No drivers found.</td></tr>
           {% endfor %}
         </tbody>
       </table>
