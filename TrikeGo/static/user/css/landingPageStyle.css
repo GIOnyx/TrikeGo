@@ -70,6 +70,10 @@ html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, 'Seg
 .divider:before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(255,255,255,0.12)}
 .modal-card form{display:flex;flex-direction:column;gap:12px}
 .modal-card input{padding:12px 14px;border-radius:10px;border:1px solid #2b3a66;background:#0a1530;color:#e6eefc}
+.modal-card input::placeholder{color:rgba(255,255,255,0.6);opacity:1}
+.modal-card input::-webkit-input-placeholder{color:rgba(255,255,255,0.6)}
+.modal-card input::-moz-placeholder{color:rgba(255,255,255,0.6);opacity:1}
+.modal-card input:-ms-input-placeholder{color:rgba(255,255,255,0.6)}
 .remember{display:flex;justify-content:space-between;align-items:center;color:#a8b5d6;font-size:14px}
 .remember input{margin-right:8px}
 .forgot{color:#71a6ff;text-decoration:none}

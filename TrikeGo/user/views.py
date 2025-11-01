@@ -54,6 +54,17 @@ class Login(View):
             password = form.cleaned_data.get('password')
             user = authenticate(username=username, password=password)
             if user is not None:
+                # Check if driver is verified before allowing login
+                if user.trikego_user == 'D':
+                    try:
+                        driver_profile = Driver.objects.get(user=user)
+                        if not driver_profile.is_verified:
+                            messages.error(request, "Account not verified. Please wait for admin approval.")
+                            return redirect('/#login')
+                    except Driver.DoesNotExist:
+                        messages.error(request, "Driver profile not found. Please contact support.")
+                        return redirect('/#login')
+                
                 login(request, user)
                 if user.trikego_user == 'D':
                     return redirect('user:driver_dashboard')

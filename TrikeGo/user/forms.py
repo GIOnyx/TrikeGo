@@ -96,10 +96,9 @@ class DriverRegistrationForm(UserCreationForm):
     )
     license_image_url = forms.URLField(
         required=True,
-        help_text="URL to your driver's license image (.jpg/.jpeg/.png)",
+        help_text="URL to your driver's license image",
         widget=forms.URLInput(attrs={
-            'pattern': r'^https?://.+\.(jpg|jpeg|png)$',
-            'placeholder': 'License Image URL'
+            'placeholder': 'License Image URL (must start with https://)'
         })
     )
     
@@ -128,11 +127,8 @@ class DriverRegistrationForm(UserCreationForm):
 
     def clean_license_image_url(self):
         url = self.cleaned_data.get('license_image_url', '')
-        validator = URLValidator(schemes=['http', 'https'])
-        try:
-            validator(url)
-        except ValidationError:
-            raise ValidationError('License image URL must be a valid HTTP/HTTPS URL')
+        if not url.startswith('https://'):
+            raise ValidationError('License image URL must start with https://')
         return url
 
 class RiderRegistrationForm(UserCreationForm):
@@ -238,15 +234,30 @@ class DriverVerificationForm(forms.Form):
 
 
 class TricycleForm(forms.ModelForm):
+    # Override max_capacity to remove default value from display
+    max_capacity = forms.IntegerField(
+        min_value=1,
+        max_value=20,
+        required=True,
+        widget=forms.NumberInput(attrs={
+            'placeholder': 'Max passengers (e.g. 8)',
+            'required': True,
+            'min': 1,
+            'max': 20
+        })
+    )
+    
     class Meta:
         from .models import Tricycle
         model = Tricycle
-        fields = ['plate_number', 'color', 'image_url', 'max_capacity']
+        fields = ['plate_number', 'color', 'max_capacity', 'image_url', 'or_image_url', 'cr_image_url', 'mtop_image_url']
         widgets = {
             'plate_number': forms.TextInput(attrs={'placeholder': 'Plate number', 'required': True}),
             'color': forms.TextInput(attrs={'placeholder': 'Tricycle color', 'required': True}),
-            'image_url': forms.URLInput(attrs={'placeholder': 'Image URL', 'required': True}),
-            'max_capacity': forms.NumberInput(attrs={'placeholder': 'Max passengers', 'required': True, 'min': 1}),
+            'image_url': forms.URLInput(attrs={'placeholder': 'Tricycle Image URL', 'required': True}),
+            'or_image_url': forms.URLInput(attrs={'placeholder': 'Official Receipt (OR) Image URL', 'required': True}),
+            'cr_image_url': forms.URLInput(attrs={'placeholder': 'Certificate of Registration (CR) Image URL', 'required': True}),
+            'mtop_image_url': forms.URLInput(attrs={'placeholder': 'MTOP/Franchise Document Image URL', 'required': True}),
         }
 
     def clean_plate_number(self):
@@ -260,13 +271,28 @@ class TricycleForm(forms.ModelForm):
 
     def clean_image_url(self):
         url = self.cleaned_data.get('image_url', '')
-        validator = URLValidator(schemes=['http', 'https'])
-        try:
-            validator(url)
-        except ValidationError:
-            raise ValidationError('Image URL must be a valid HTTP/HTTPS URL')
+        if not url.startswith('https://'):
+            raise ValidationError('Tricycle image URL must start with https://')
         return url
-
+    
+    def clean_or_image_url(self):
+        url = self.cleaned_data.get('or_image_url', '')
+        if not url.startswith('https://'):
+            raise ValidationError('OR image URL must start with https://')
+        return url
+    
+    def clean_cr_image_url(self):
+        url = self.cleaned_data.get('cr_image_url', '')
+        if not url.startswith('https://'):
+            raise ValidationError('CR image URL must start with https://')
+        return url
+    
+    def clean_mtop_image_url(self):
+        url = self.cleaned_data.get('mtop_image_url', '')
+        if not url.startswith('https://'):
+            raise ValidationError('MTOP image URL must start with https://')
+        return url
+    
     def clean_max_capacity(self):
         cap = self.cleaned_data.get('max_capacity')
         try:
@@ -276,6 +302,5 @@ class TricycleForm(forms.ModelForm):
         if cap < 1:
             raise ValidationError('Max capacity must be at least 1')
         if cap > 20:
-            # Reasonable upper bound to prevent accidental huge values
             raise ValidationError('Max capacity seems too large')
         return cap

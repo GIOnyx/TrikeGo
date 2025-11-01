@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tricycle Registration — TrikeGo</title>
-  <link rel="stylesheet" href="{% static 'user/css/landingPageStyle.css' %}?v=2" />
+  <link rel="stylesheet" href="{% static 'user/css/landingPageStyle.css' %}?v=3" />
 </head>
 <body class="auth-page">
   <section class="hero" style="min-height:100vh">
@@ -19,8 +19,11 @@
           {% csrf_token %}
           {{ form.plate_number }}
           {{ form.color }}
-          {{ form.image_url }}
           {{ form.max_capacity }}
+          {{ form.image_url }}
+          {{ form.or_image_url }}
+          {{ form.cr_image_url }}
+          {{ form.mtop_image_url }}
 
           {% if form.errors %}
             <div class="error-message">{{ form.errors }}</div>

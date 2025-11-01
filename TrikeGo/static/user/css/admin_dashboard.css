@@ -113,6 +113,25 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Logout button */
+.logout-btn {
+  background-color: #d9534f;
+  padding: 0.6rem 1.2rem;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.logout-btn:hover {
+  background-color: #c9302c;
+}
+
+/* Tricycle info in table */
+td a {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-size: 0.85rem;
+}
+
 /* Responsive tweaks */
 @media (max-width: 768px) {
   .admin-header {

@@ -46,6 +46,10 @@ class Tricycle(models.Model):
     max_capacity = models.PositiveSmallIntegerField(default=1)
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='tricycles')
     image_url = models.URLField(blank=True, null=True)
+    # Registration documents
+    or_image_url = models.URLField(blank=True, null=True, verbose_name='Official Receipt (OR)')
+    cr_image_url = models.URLField(blank=True, null=True, verbose_name='Certificate of Registration (CR)')
+    mtop_image_url = models.URLField(blank=True, null=True, verbose_name='MTOP/Franchise Document')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

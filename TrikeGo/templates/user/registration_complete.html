@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Registration Complete — TrikeGo</title>
-  <link rel="stylesheet" href="{% static 'user/css/landingPageStyle.css' %}?v=2" />
+  <link rel="stylesheet" href="{% static 'user/css/landingPageStyle.css' %}?v=3" />
 </head>
 <body class="auth-page">
   <section class="hero" style="min-height:100vh">
@@ -13,7 +13,9 @@
     <div class="container" style="position:relative;z-index:1">
       <div class="modal-card" style="max-width:520px;margin:10vh auto;text-align:center;">
         <h2>Registration Submitted</h2>
-        <p>Your application is under review. We'll notify you when it's approved.</p>
+        <p>Your application is under review. Our admins will verify your driver's license and vehicle registration.</p>
+        <p><strong>You will not be able to log in until your account is verified.</strong></p>
+        <p>We'll notify you when it's approved.</p>
         <a href="{% url 'user:landing' %}" class="btn primary wide">Return to Home</a>
       </div>
     </div>
